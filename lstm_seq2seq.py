@@ -3,9 +3,8 @@ from collections import Counter
 
 import spacy
 
-import tensorflow as tf
 from keras.models import Model
-from keras.layers import Input, LSTM, Dense, Embedding, concatenate, Lambda
+from keras.layers import Input, LSTM, Dense, Embedding
 import numpy as np
 
 
@@ -142,19 +141,9 @@ encoder_states = [state_h, state_c]
 decoder_inputs = Input(shape=(max_decoder_seq_length,))
 decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
 decoder_dense = Dense(num_decoder_tokens, activation='softmax')
-# decoder_outputs, _, _ = decoder_lstm(embedding(decoder_inputs),
-#                                      initial_state=encoder_states)
-# decoder_outputs = decoder_dense(decoder_outputs)
-states = encoder_states
-embs = embedding(decoder_inputs)
-embs = Lambda(lambda x: tf.transpose(x, ([1, 0, 2])))(embs)
-expand_dims = Lambda(lambda x: tf.expand_dims(x, axis=0))
-all_outputs = []
-for emb in Lambda(lambda x: tf.unstack(x))(embs):
-    outputs, state_h, state_c = decoder_lstm(expand_dims(emb), initial_state=states)
-    states = [state_h, state_c]
-    all_outputs.append(outputs)
-decoder_outputs = Lambda(lambda x: concatenate(x, axis=0))(all_outputs)
+decoder_outputs, _, _ = decoder_lstm(embedding(decoder_inputs),
+                                     initial_state=encoder_states)
+decoder_outputs = decoder_dense(decoder_outputs)
 
 
 model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
