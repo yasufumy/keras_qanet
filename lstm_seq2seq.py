@@ -3,13 +3,32 @@ from collections import Counter
 
 import spacy
 
+import tensorflow as tf
+from keras import backend as K
 from keras.models import Model
-from keras.layers import Input, LSTM, Dense, Embedding
+from keras.layers import Input, LSTM, Dense, Embedding, Concatenate
+from keras.engine.topology import Layer
 import numpy as np
 
 
 spacy_en = spacy.load('en_core_web_sm',
                       disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
+
+
+class DotAttentionLayer(Layer):
+    def call(self, inputs):
+        keys, query, lengths = inputs
+        if len(K.int_shape(query)) == 2:
+            # when query is a vector
+            query = tf.expand_dims(query, dim=1)
+        scores = tf.matmul(query, keys, transpose_b=True)
+        scores_mask = tf.expand_dims(tf.sequence_mask(
+            lengths=tf.to_int32(tf.squeeze(lengths, axis=1)),
+            maxlen=tf.to_int32(tf.shape(scores)[1]),
+            dtype=tf.float32), dim=2)
+        scores = scores * scores_mask + (1. - scores_mask) * tf.float32.min
+        weights = K.softmax(scores, axis=2)
+        return tf.matmul(weights, keys)
 
 
 def char_span_to_token_span(token_offsets, char_start, char_end):
@@ -83,7 +102,7 @@ def make_vocab(tokens, max_size):
 
     index_to_token = ('<unk>', '<s>', '</s>', '<pad>') + ordered_tokens
     if len(index_to_token) > max_size:
-        index_to_token = index_to_token[:max_size]
+        index_to_token = index_to_token[: max_size]
     indices = range(len(index_to_token))
     token_to_index = dict(zip(index_to_token, indices))
     return token_to_index, list(index_to_token)
@@ -118,7 +137,9 @@ print('Max sequence length for outputs:', max_decoder_seq_length)
 
 encoder_input_data = encoder_texts.data
 decoder_input_data = decoder_texts.data
+lengths_data = np.array([len(q) for q in questions], dtype=np.int32)
 decoder_target_data = np.zeros(decoder_texts.data.shape, dtype=np.int32)
+decoder_input_data2 = np.zeros(decoder_texts.data.shape + (3,))
 decoder_token_to_index = {'ignore': 0, 'start': 1, 'keep': 2}
 decoder_index_to_token = ['ignore', 'start', 'keep']
 
@@ -128,59 +149,98 @@ for i, spans in enumerate(spans):
         start = spans[0]
         end = spans[1]
         decoder_target_data[i, start] = 1
-        decoder_target_data[i, start + 1: end] = 2
+        decoder_target_data[i, start + 1: end + 1] = 2
+        if i < len(spans):
+            decoder_input_data2[i + 1, start, 1] = 1.
+            decoder_input_data2[i + 1, start + 1: end + 1, 2] = 1.
 
 decoder_target_data = decoder_target_data[:, :, None]
 
-encoder_inputs = Input(shape=(max_encoder_seq_length,))
+encoder_inputs = Input(shape=(None,))
+lengths_inputs = Input(shape=(1,))
 embedding = Embedding(len(token_to_index), latent_dim)
-encoder = LSTM(latent_dim, return_state=True)
+encoder = LSTM(latent_dim, return_state=True, return_sequences=True,
+               batch_input_shape=(None, max_encoder_seq_length, latent_dim))
 encoder_outputs, state_h, state_c = encoder(embedding(encoder_inputs))
 encoder_states = [state_h, state_c]
 
-decoder_inputs = Input(shape=(max_decoder_seq_length,))
-decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
+
+decoder_inputs = Input(shape=(None,))
+decoder_inputs2 = Input(shape=(None, 3))
+decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True,
+                    batch_input_shape=(None, max_decoder_seq_length, latent_dim))
 decoder_dense = Dense(num_decoder_tokens, activation='softmax')
-decoder_outputs, _, _ = decoder_lstm(embedding(decoder_inputs),
+concat = Concatenate(axis=-1)
+decoder_outputs, _, _ = decoder_lstm(concat([embedding(decoder_inputs), decoder_inputs2]),
                                      initial_state=encoder_states)
-decoder_outputs = decoder_dense(decoder_outputs)
+attention = DotAttentionLayer()
+attention_outputs = attention([encoder_outputs, decoder_outputs, lengths_inputs])
+decoder_outputs = decoder_dense(concat([decoder_outputs, attention_outputs]))
 
 
-model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
+model = Model([encoder_inputs, lengths_inputs, decoder_inputs, decoder_inputs2], decoder_outputs)
 
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
+model.fit([encoder_input_data, lengths_data, decoder_input_data, decoder_input_data2],
+          decoder_target_data,
           batch_size=batch_size,
           epochs=epochs,
           validation_split=0)
 model.save('s2s.h5')
 
 
-def decode_sequence(question_seq, context_seq):
-    # Encode the input as state vectors.
-    target_seq = model.predict([question_seq, context_seq], batch_size=1)
+encoder_model = Model(encoder_inputs, [encoder_outputs] + encoder_states)
 
-    # Sampling loop for a batch of sequences
-    # (to simplify, here we assume a batch of size 1).
+# input placeholder
+decoder_state_input_h = Input(shape=(latent_dim,))
+decoder_state_input_c = Input(shape=(latent_dim,))
+encoder_outputs_inputs = Input(shape=(None, latent_dim))
+decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
+# feeding lstm
+decoder_outputs, state_h, state_c = decoder_lstm(
+    concat([embedding(decoder_inputs), decoder_inputs2]), initial_state=decoder_states_inputs)
+attention_outputs = attention([encoder_outputs_inputs, decoder_outputs, lengths_inputs])
+# model outputs
+decoder_states = [state_h, state_c]
+decoder_outputs = decoder_dense(concat([decoder_outputs, attention_outputs]))
+decoder_model = Model(
+    [decoder_inputs, decoder_inputs2, encoder_outputs_inputs, lengths_inputs] + decoder_states_inputs,
+    [decoder_outputs] + decoder_states)
+
+
+def decode_sequence(question_seq, context_seq, lengths_data):
+    # Encode the input as state vectors.
+    encoder_outputs, *states_value = encoder_model.predict([question_seq], batch_size=1)
+
     decoded_tokens = []
-    for output_token in target_seq:
-        # Sample a token
-        sampled_token_index = np.argmax(output_token)
+    action = np.zeros((1, 1, 3))
+    for token in np.transpose(context_seq, [1, 0]):
+        output_tokens, h, c = decoder_model.predict(
+            [token, action, encoder_outputs, lengths_data] + states_value)
+        sampled_token_index = np.argmax(output_tokens)
         sampled_char = decoder_index_to_token[sampled_token_index]
         decoded_tokens.append(sampled_char)
-    decoded_sentence = ' '.join(decoded_tokens)
 
-    return decoded_sentence
+        action = np.zeros((1, 1, 3))
+        action[0, 0, sampled_token_index] = 1.
+
+        states_value = [h, c]
+
+    return decoded_tokens
 
 
-print(spans)
 for seq_index in range(10):
     # Take one sequence (part of the training set)
     # for trying out decoding.
-    question_seq = encoder_input_data[seq_index]
-    context_seq = decoder_input_data[seq_index]
+    question_seq = encoder_input_data[seq_index][None]
+    context_seq = decoder_input_data[seq_index][None]
+    lengths = lengths_data[seq_index][None]
 
-    decoded_sentence = decode_sequence(question_seq, context_seq)
+    decoded_sentence = decode_sequence(question_seq, context_seq, lengths)
+    indices = [i for i, y in enumerate(decoded_sentence) if y == 'start' or y == 'keep']
     print('-')
-    print('Input sentence:', encoder_texts.data[seq_index])
-    print('Decoded sentence:', decoded_sentence)
+    print('Answer', ' '.join([token.text for token in answers[seq_index]]))
+    if indices:
+        print('Predicted:', [index_to_token[decoder_texts.data[seq_index][i]] for i in indices])
+    else:
+        print('Predicted: unanswerable')
