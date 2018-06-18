@@ -1,4 +1,5 @@
 import csv
+import string
 from collections import Counter
 
 import spacy
@@ -29,6 +30,67 @@ class DotAttentionLayer(Layer):
         scores = scores * scores_mask + (1. - scores_mask) * tf.float32.min
         weights = K.softmax(scores, axis=2)
         return tf.matmul(weights, keys)
+
+
+def normalize_answer(text):
+    def white_space_fix(text):
+        return ' '.join(text.split())
+
+    def remove_punc(text):
+        exclude = set(string.punctuation)
+        return ''.join(char for char in text if char not in exclude)
+
+    return white_space_fix(remove_punc(str.lower(text)))
+
+
+def f1_score(prediction, ground_truth):
+    prediction_tokens = normalize_answer(prediction).split()
+    ground_truth_tokens = normalize_answer(ground_truth).split()
+    common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+    num_same = sum(common.values())
+    if num_same == 0:
+        return 0
+    precision = 1. * num_same / len(prediction_tokens)
+    recall = 1. * num_same / len(ground_truth_tokens)
+    f1 = (2 * precision * recall) / (precision + recall)
+    return f1
+
+
+def exact_match_score(prediction, ground_truth):
+    return (normalize_answer(prediction) == normalize_answer(ground_truth))
+
+
+def metric_max_over_ground_truths(metric_fn, prediction, ground_truths):
+    scores_for_groud_truths = []
+    for ground_truth in ground_truths:
+        score = metric_fn(prediction, ground_truth)
+        scores_for_groud_truths.append(score)
+    return max(scores_for_groud_truths)
+
+
+class SquadMetric:
+    def __init__(self):
+        self._total_em = 0.
+        self._total_f1 = 0.
+        self._count = 0
+
+    def __call__(self, best_span_string, answer_string):
+        em = metric_max_over_ground_truths(
+            exact_match_score, best_span_string, [answer_string])
+        f1 = metric_max_over_ground_truths(
+            f1_score, best_span_string, [answer_string])
+        self._total_em += em
+        self._total_f1 += f1
+        self._count += 1
+
+    def get_metric(self, reset=False):
+        em = self._total_em / self._count if self._count > 0 else 0
+        f1 = self._total_f1 / self._count if self._count > 0 else 0
+        if reset:
+            self._total_em = 0.
+            self._total_f1 = 0.
+            self._count = 0
+        return em, f1
 
 
 def char_span_to_token_span(token_offsets, char_start, char_end):
@@ -111,7 +173,7 @@ def make_vocab(tokens, max_size):
 with open('data/train-v2.0.txt') as f:
     data = [row for row in csv.reader(f, delimiter='\t')]
 
-data = [[tokenizer(x[0]), tokenizer(x[1]), int(x[2]), int(x[3]), tokenizer(x[4])]
+data = [[tokenizer(x[0]), tokenizer(x[1]), int(x[2]), int(x[3]), x[4]]
         for x in data[:10]]
 contexts, questions, char_starts, char_ends, answers = zip(*data)
 tokens = (token.text for tokens in contexts + questions for token in tokens)
@@ -229,6 +291,7 @@ def decode_sequence(question_seq, context_seq, lengths_data):
     return decoded_tokens
 
 
+metric = SquadMetric()
 for seq_index in range(10):
     # Take one sequence (part of the training set)
     # for trying out decoding.
@@ -238,9 +301,6 @@ for seq_index in range(10):
 
     decoded_sentence = decode_sequence(question_seq, context_seq, lengths)
     indices = [i for i, y in enumerate(decoded_sentence) if y == 'start' or y == 'keep']
-    print('-')
-    print('Answer', ' '.join([token.text for token in answers[seq_index]]))
-    if indices:
-        print('Predicted:', [index_to_token[decoder_texts.data[seq_index][i]] for i in indices])
-    else:
-        print('Predicted: unanswerable')
+    prediction = ' '.join(index_to_token[decoder_texts.data[seq_index][i]] for i in indices)
+    metric(prediction, answers[seq_index])
+print(metric.get_metric())
