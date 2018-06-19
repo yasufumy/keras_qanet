@@ -190,15 +190,16 @@ class SquadSequence(Sequence):
         with open(filename) as f:
             self._total_data = len(f.readlines()) - 1
         self._batch_size = batch_size
+        self._indices = np.random.permutation(self._total_data)
 
     def __len__(self):
         return int(math.ceil(self._total_data / float(self._batch_size)))
 
     def __getitem__(self, idx):
         lines = []
-        for i in range(idx * self._batch_size, (idx + 1) * self._batch_size):
-            line = linecache.getline(self._filename, i + 1)
-            lines.append(next(csv.reader([line], delimiter='\t')))
+        for i in self._indices[idx * self._batch_size:(idx + 1) * self._batch_size]:
+            lines.append(linecache.getline(self._filename, i + 1))
+        data = [row for row in csv.reader(lines, delimiter='\t')]
         contexts, questions, char_starts, char_ends, answers = zip(*lines)
 
         contexts = [tokenizer(x) for x in contexts]
@@ -222,6 +223,9 @@ class SquadSequence(Sequence):
                     span_batch[i + 1, start + 1: end + 1, 2] = 1.
 
         return [question_batch, context_batch, span_batch], target_batch[:, :, None]
+
+    def on_epoch_end(self):
+        self._indices = np.random.permutation(self._total_data)
 
 
 if not os.path.exists('vocab.pkl'):
@@ -283,7 +287,6 @@ model.fit_generator(
     generator=train_generator, steps_per_epoch=len(train_generator), epochs=1,
     verbose=1)
 model.save('s2s.h5')
-
 
 
 encoder_model = Model(encoder_inputs, [encoder_outputs] + encoder_states)
