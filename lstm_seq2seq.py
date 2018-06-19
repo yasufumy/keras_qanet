@@ -23,11 +23,11 @@ class DotAttentionLayer(Layer):
             # when query is a vector
             query = tf.expand_dims(query, dim=1)
         scores = tf.matmul(query, keys, transpose_b=True)
-        scores_mask = tf.expand_dims(tf.sequence_mask(
-            lengths=tf.to_int32(tf.squeeze(lengths, axis=1)),
-            maxlen=tf.to_int32(tf.shape(scores)[1]),
-            dtype=tf.float32), dim=2)
-        scores = scores * scores_mask + (1. - scores_mask) * tf.float32.min
+        # scores_mask = tf.expand_dims(tf.sequence_mask(
+        #     lengths=tf.to_int32(tf.squeeze(lengths, axis=1)),
+        #     maxlen=tf.to_int32(tf.shape(scores)[1]),
+        #     dtype=tf.float32), dim=2)
+        # scores = scores * scores_mask + (1. - scores_mask) * tf.float32.min
         weights = K.softmax(scores, axis=2)
         return tf.matmul(weights, keys)
 
@@ -162,7 +162,7 @@ def make_vocab(tokens, max_size):
     counter = Counter(tokens)
     ordered_tokens, _ = zip(*counter.most_common())
 
-    index_to_token = ('<unk>', '<s>', '</s>', '<pad>') + ordered_tokens
+    index_to_token = ('<pad>', '<unk>', '<s>', '</s>') + ordered_tokens
     if len(index_to_token) > max_size:
         index_to_token = index_to_token[: max_size]
     indices = range(len(index_to_token))
@@ -220,7 +220,7 @@ decoder_target_data = decoder_target_data[:, :, None]
 
 encoder_inputs = Input(shape=(None,))
 lengths_inputs = Input(shape=(1,))
-embedding = Embedding(len(token_to_index), latent_dim)
+embedding = Embedding(len(token_to_index), latent_dim, mask_zero=True)
 encoder = LSTM(latent_dim, return_state=True, return_sequences=True,
                batch_input_shape=(None, max_encoder_seq_length, latent_dim))
 encoder_outputs, state_h, state_c = encoder(embedding(encoder_inputs))
