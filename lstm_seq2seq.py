@@ -1,5 +1,7 @@
 import csv
 import string
+import math
+import linecache
 from collections import Counter
 
 import spacy
@@ -9,6 +11,7 @@ from keras import backend as K
 from keras.models import Model
 from keras.layers import Input, LSTM, Dense, Embedding, Concatenate
 from keras.engine.topology import Layer
+from keras.utils import Sequence
 import numpy as np
 
 
@@ -177,6 +180,43 @@ def make_vocab(tokens, max_size):
     indices = range(len(index_to_token))
     token_to_index = dict(zip(index_to_token, indices))
     return token_to_index, list(index_to_token)
+
+
+class SquadSequence(Sequence):
+    def __init__(self, filename, batch_size):
+        self._filename = filename
+        with open(filename) as f:
+            self._total_data = len(f.readlines()) - 1
+        self._batch_size = batch_size
+
+    def __len__(self):
+        return int(math.ceil(self._total_data / float(self._batch_size)))
+
+    def __getitem__(self, idx):
+        lines = []
+        for i in range(idx * self._batch_size, (idx + 1) * self._batch_size):
+            lines.append(linecache.getline(self._filename, i + 1))
+        contexts, questions, char_start, char_ends, answers = zip(*lines)
+
+        contexts = [tokenizer(x) for x in contexts]
+        questions = [tokenizer(x) for x in questions]
+        question_batch = TextData(questions).getattr('text').padding('<pad>').to_array(token_to_index, 0)
+        context_batch = TextData(contexts).getattr('text').padding('<pad>').to_array(token_to_index, 0)
+
+        target_batch = np.zeros(decoder_texts.data.shape, dtype=np.int32)
+        span_batch = np.zeros(decoder_texts.data.shape + (3,))
+        spans = get_spans(contexts, char_starts, char_ends)
+        for i, spans in enumerate(spans):
+            if spans[0] >= 0:
+                start = spans[0]
+                end = spans[1]
+                target_batch[i, start] = 1
+                target_batch[i, start + 1: end + 1] = 2
+                if i < len(spans):
+                    span_batch[i + 1, start, 1] = 1.
+                    span_batch[i + 1, start + 1: end + 1, 2] = 1.
+
+        return question_batch, context_batch, span_batch, target_batch
 
 
 with open('data/train-v2.0.txt') as f:
