@@ -181,9 +181,13 @@ def make_vocab(tokens, max_size):
 
 with open('data/train-v2.0.txt') as f:
     data = [row for row in csv.reader(f, delimiter='\t')]
+with open('data/dev-v2.0.txt') as f:
+    dev_data = [row for row in csv.reader(f, delimiter='\t')]
 
 data = [[tokenizer(x[0]), tokenizer(x[1]), int(x[2]), int(x[3]), x[4]]
         for x in data[:10]]
+dev_data = [[tokenizer(x[0]), tokenizer(x[1]), int(x[2]), int(x[3]), x[4]]
+            for x in data[:10]]
 contexts, questions, char_starts, char_ends, answers = zip(*data)
 tokens = (token.text for tokens in contexts + questions for token in tokens)
 token_to_index, index_to_token = make_vocab(tokens, 30000)
@@ -310,5 +314,4 @@ for seq_index in range(10):
     prediction = ' '.join(index_to_token[decoder_texts.data[seq_index][i]] for i in indices)
     answer = answers[seq_index]
     metric(prediction, answer)
-    print(f'prediction: {prediction}, answer: {answer}')
-print(metric.get_metric())
+print('EM: {}, F1: {}'.format(*metric.get_metric()))
