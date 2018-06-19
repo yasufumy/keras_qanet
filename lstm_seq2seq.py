@@ -1,7 +1,9 @@
+import os
 import csv
 import string
 import math
 import linecache
+import pickle
 from collections import Counter
 
 import spacy
@@ -195,16 +197,19 @@ class SquadSequence(Sequence):
     def __getitem__(self, idx):
         lines = []
         for i in range(idx * self._batch_size, (idx + 1) * self._batch_size):
-            lines.append(linecache.getline(self._filename, i + 1))
-        contexts, questions, char_start, char_ends, answers = zip(*lines)
+            line = linecache.getline(self._filename, i + 1)
+            lines.append(next(csv.reader([line], delimiter='\t')))
+        contexts, questions, char_starts, char_ends, answers = zip(*lines)
 
         contexts = [tokenizer(x) for x in contexts]
         questions = [tokenizer(x) for x in questions]
-        question_batch = TextData(questions).getattr('text').padding('<pad>').to_array(token_to_index, 0)
-        context_batch = TextData(contexts).getattr('text').padding('<pad>').to_array(token_to_index, 0)
+        char_starts = [int(x) for x in char_starts]
+        char_ends = [int(x) for x in char_ends]
+        question_batch = TextData(questions).getattr('text').padding('<pad>').to_array(token_to_index, 0).data
+        context_batch = TextData(contexts).getattr('text').padding('<pad>').to_array(token_to_index, 0).data
 
-        target_batch = np.zeros(decoder_texts.data.shape, dtype=np.int32)
-        span_batch = np.zeros(decoder_texts.data.shape + (3,))
+        target_batch = np.zeros(context_batch.shape, dtype=np.int32)
+        span_batch = np.zeros(context_batch.shape + (3,))
         spans = get_spans(contexts, char_starts, char_ends)
         for i, spans in enumerate(spans):
             if spans[0] >= 0:
@@ -216,72 +221,46 @@ class SquadSequence(Sequence):
                     span_batch[i + 1, start, 1] = 1.
                     span_batch[i + 1, start + 1: end + 1, 2] = 1.
 
-        return question_batch, context_batch, span_batch, target_batch
+        return [question_batch, context_batch, span_batch], target_batch[:, :, None]
 
 
-with open('data/train-v2.0.txt') as f:
-    data = [row for row in csv.reader(f, delimiter='\t')]
-with open('data/dev-v2.0.txt') as f:
-    dev_data = [row for row in csv.reader(f, delimiter='\t')]
+if not os.path.exists('vocab.pkl'):
+    with open('data/squad_train_v2.0/train-v2.0.txt') as f:
+        data = [row for row in csv.reader(f, delimiter='\t')]
+    data = [[tokenizer(x[0]), tokenizer(x[1]), int(x[2]), int(x[3]), x[4]]
+            for x in data]
+    contexts, questions, char_starts, char_ends, answers = zip(*data)
+    tokens = (token.text for tokens in contexts + questions for token in tokens)
+    token_to_index, index_to_token = make_vocab(tokens, 30000)
+    with open('vocab.pkl', mode='wb') as f:
+        pickle.dump((token_to_index, index_to_token), f)
+else:
+    with open('vocab.pkl', mode='rb') as f:
+        token_to_index, index_to_token = pickle.load(f)
 
-data = [[tokenizer(x[0]), tokenizer(x[1]), int(x[2]), int(x[3]), x[4]]
-        for x in data[:10]]
-dev_data = [[tokenizer(x[0]), tokenizer(x[1]), int(x[2]), int(x[3]), x[4]]
-            for x in data[:10]]
-contexts, questions, char_starts, char_ends, answers = zip(*data)
-tokens = (token.text for tokens in contexts + questions for token in tokens)
-token_to_index, index_to_token = make_vocab(tokens, 30000)
-
-encoder_texts = TextData(questions).getattr('text').padding('<pad>').to_array(token_to_index, 0)
-decoder_texts = TextData(contexts).getattr('text').padding('<pad>').to_array(token_to_index, 0)
-
-batch_size = 1  # Batch size for training.
+batch_size = 64  # Batch size for training.
 epochs = 100  # Number of epochs to train for.
 latent_dim = 256  # Latent dimensionality of the encoding space.
 num_encoder_tokens = len(token_to_index)
 num_decoder_tokens = 3
-max_encoder_seq_length = encoder_texts.max_length
-max_decoder_seq_length = decoder_texts.max_length
 
 
-print('Number of samples:', len(encoder_texts))
 print('Number of unique input tokens:', num_encoder_tokens)
 print('Number of unique output tokens:', num_decoder_tokens)
-print('Max sequence length for inputs:', max_encoder_seq_length)
-print('Max sequence length for outputs:', max_decoder_seq_length)
 
-encoder_input_data = encoder_texts.data
-decoder_input_data = decoder_texts.data
-decoder_target_data = np.zeros(decoder_texts.data.shape, dtype=np.int32)
-decoder_input_data2 = np.zeros(decoder_texts.data.shape + (3,))
 decoder_token_to_index = {'ignore': 0, 'start': 1, 'keep': 2}
 decoder_index_to_token = ['ignore', 'start', 'keep']
 
-spans = get_spans(contexts, char_starts, char_ends)
-for i, spans in enumerate(spans):
-    if spans[0] >= 0:
-        start = spans[0]
-        end = spans[1]
-        decoder_target_data[i, start] = 1
-        decoder_target_data[i, start + 1: end + 1] = 2
-        if i < len(spans):
-            decoder_input_data2[i + 1, start, 1] = 1.
-            decoder_input_data2[i + 1, start + 1: end + 1, 2] = 1.
-
-decoder_target_data = decoder_target_data[:, :, None]
-
 encoder_inputs = Input(shape=(None,))
 embedding = Embedding(len(token_to_index), latent_dim, mask_zero=True)
-encoder = LSTM(latent_dim, return_state=True, return_sequences=True,
-               batch_input_shape=(None, max_encoder_seq_length, latent_dim))
+encoder = LSTM(latent_dim, return_state=True, return_sequences=True)
 encoder_outputs, state_h, state_c = encoder(embedding(encoder_inputs))
 encoder_states = [state_h, state_c]
 
 
 decoder_inputs = Input(shape=(None,))
 decoder_inputs2 = Input(shape=(None, 3))
-decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True,
-                    batch_input_shape=(None, max_decoder_seq_length, latent_dim))
+decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
 decoder_dense = Dense(num_decoder_tokens, activation='softmax')
 concat = Concatenate(axis=-1)
 decoder_outputs, _, _ = decoder_lstm(concat([embedding(decoder_inputs), decoder_inputs2]),
@@ -294,12 +273,17 @@ decoder_outputs = decoder_dense(concat([decoder_outputs, attention_outputs]))
 model = Model([encoder_inputs, decoder_inputs, decoder_inputs2], decoder_outputs)
 
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-model.fit([encoder_input_data, decoder_input_data, decoder_input_data2],
-          decoder_target_data,
-          batch_size=batch_size,
-          epochs=epochs,
-          validation_split=0)
+# model.fit([encoder_input_data, decoder_input_data, decoder_input_data2],
+#           decoder_target_data,
+#           batch_size=batch_size,
+#           epochs=epochs,
+#           validation_split=0)
+train_generator = SquadSequence('data/train-v2.0.txt', batch_size)
+model.fit_generator(
+    generator=train_generator, steps_per_epoch=len(train_generator), epochs=1,
+    verbose=1)
 model.save('s2s.h5')
+
 
 
 encoder_model = Model(encoder_inputs, [encoder_outputs] + encoder_states)
