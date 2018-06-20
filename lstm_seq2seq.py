@@ -213,9 +213,9 @@ else:
     with open('vocab.pkl', mode='rb') as f:
         token_to_index, index_to_token = pickle.load(f)
 
-batch_size = 64  # Batch size for training.
+batch_size = 256  # Batch size for training.
 epochs = 100  # Number of epochs to train for.
-latent_dim = 256  # Latent dimensionality of the encoding space.
+latent_dim = 128 # Latent dimensionality of the encoding space.
 num_encoder_tokens = len(token_to_index)
 num_decoder_tokens = 3
 
@@ -255,8 +255,8 @@ model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
 #           validation_split=0)
 train_generator = SquadSequence('data/train-v2.0.txt', batch_size)
 model.fit_generator(
-    generator=train_generator, steps_per_epoch=len(train_generator), epochs=1,
-    verbose=1)
+    generator=train_generator, steps_per_epoch=len(train_generator), epochs=epochs,
+    use_multiprocessing=True)
 model.save('s2s.h5')
 
 
