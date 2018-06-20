@@ -199,6 +199,31 @@ class SquadSequence(Sequence):
         self._indices = np.random.permutation(self._total_data)
 
 
+class SquadTestGenerator:
+    def __init__(self, filename, batch_size):
+        self._filename = filename
+        with open(filename) as f:
+            self._total_data = len(f.readlines()) - 1
+        self._batch_size = batch_size
+        indices = range(self._total_data)
+        self._indices = [indices[i:i + self._batch_size] for i in range(0, self._total_data, self._batch_size)]
+
+    def __len__(self):
+        return int(math.ceil(self._total_data / float(self._batch_size)))
+
+    def __iter__(self):
+        for indices in self._indices:
+            contexts, questions, _, _, answers = zip(*csv.reader(
+                [linecache.getline(self._filename, i + 1) for i in indices], delimiter='\t'))
+
+            contexts = [tokenizer(x) for x in contexts]
+            questions = [tokenizer(x) for x in questions]
+            question_batch = TextData(questions).getattr('text').padding('<pad>').to_array(token_to_index, 0).data
+            context_batch = TextData(contexts).getattr('text').padding('<pad>').to_array(token_to_index, 0).data
+
+            yield question_batch, context_batch, answers
+
+
 if not os.path.exists('vocab.pkl'):
     with open('data/squad_train_v2.0/train-v2.0.txt') as f:
         data = [row for row in csv.reader(f, delimiter='\t')]
@@ -214,7 +239,7 @@ else:
         token_to_index, index_to_token = pickle.load(f)
 
 batch_size = 256  # Batch size for training.
-epochs = 100  # Number of epochs to train for.
+epochs = 30  # Number of epochs to train for.
 latent_dim = 128 # Latent dimensionality of the encoding space.
 num_encoder_tokens = len(token_to_index)
 num_decoder_tokens = 3
@@ -248,11 +273,6 @@ decoder_outputs = decoder_dense(concat([decoder_outputs, attention_outputs]))
 model = Model([encoder_inputs, decoder_inputs, decoder_inputs2], decoder_outputs)
 
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-# model.fit([encoder_input_data, decoder_input_data, decoder_input_data2],
-#           decoder_target_data,
-#           batch_size=batch_size,
-#           epochs=epochs,
-#           validation_split=0)
 train_generator = SquadSequence('data/train-v2.0.txt', batch_size)
 model.fit_generator(
     generator=train_generator, steps_per_epoch=len(train_generator), epochs=epochs,
@@ -279,21 +299,21 @@ decoder_model = Model(
     [decoder_outputs] + decoder_states)
 
 
-def decode_sequence(question_seq, context_seq):
+def decode_sequence(question_seq, context_seq, batch_size):
     # Encode the input as state vectors.
-    encoder_outputs, *states_value = encoder_model.predict([question_seq], batch_size=1)
+    encoder_outputs, *states_value = encoder_model.predict([question_seq])
 
     decoded_tokens = []
-    action = np.zeros((1, 1, 3))
+    action = np.zeros((batch_size, 1, 3))
     for token in np.transpose(context_seq, [1, 0]):
         output_tokens, h, c = decoder_model.predict(
             [token, action, encoder_outputs] + states_value)
-        sampled_token_index = np.argmax(output_tokens)
-        sampled_char = decoder_index_to_token[sampled_token_index]
+        output_tokens = np.squeeze(output_tokens)
+        sampled_token_indices = np.argmax(output_tokens, axis=1).tolist()
+        sampled_char = [decoder_index_to_token[i] for i in sampled_token_indices]
         decoded_tokens.append(sampled_char)
 
-        action = np.zeros((1, 1, 3))
-        action[0, 0, sampled_token_index] = 1.
+        action = np.identity(3)[sampled_token_indices][:, None, :]
 
         states_value = [h, c]
 
@@ -301,15 +321,11 @@ def decode_sequence(question_seq, context_seq):
 
 
 metric = SquadMetric()
-# for seq_index in range(10):
-#     # Take one sequence (part of the training set)
-#     # for trying out decoding.
-#     question_seq = encoder_input_data[seq_index][None]
-#     context_seq = decoder_input_data[seq_index][None]
-#
-#     decoded_sentence = decode_sequence(question_seq, context_seq)
-#     indices = [i for i, y in enumerate(decoded_sentence) if y == 'start' or y == 'keep']
-#     prediction = ' '.join(index_to_token[decoder_texts.data[seq_index][i]] for i in indices)
-#     answer = answers[seq_index]
-#     metric(prediction, answer)
+dev_generator = SquadTestGenerator('data/dev-v2.0.txt', batch_size)
+for question, context, answer in dev_generator:
+    decoded_sentences = decode_sequence(question, context, batch_size)
+    for i, sent in enumerate(zip(*decoded_sentences)):
+        indices = [j for j, y in enumerate(sent) if y == 'start' or y == 'keep']
+        prediction = ' '.join(index_to_token[context[i][j]] for j in indices)
+        metric(prediction, answer[i])
 print('EM: {}, F1: {}'.format(*metric.get_metric()))
