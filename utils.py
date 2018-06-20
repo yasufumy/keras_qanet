@@ -20,10 +20,10 @@ def char_span_to_token_span(token_offsets, char_start, char_end):
     return (start_index, end_index), error
 
 
-def get_spans(contexts, starts, ends, answers):
+def get_spans(contexts, starts, ends):
     spans = []
-    for context, start, end, answer in zip(contexts, starts, ends, answers):
-        context_offsets = [(token[0], token[0] + len(token[1])) for token in context]
+    for context, start, end in zip(contexts, starts, ends):
+        context_offsets = [(token.idx, token.idx + len(token.text)) for token in context]
         span, error = char_span_to_token_span(context_offsets, start, end)
         if error:
             ...
