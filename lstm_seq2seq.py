@@ -17,6 +17,9 @@ from keras.utils import Sequence
 import numpy as np
 
 
+from utils import get_spans
+
+
 spacy_en = spacy.load('en_core_web_sm',
                       disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
 
@@ -107,26 +110,6 @@ class SquadMetric:
         return em, f1
 
 
-def char_span_to_token_span(token_offsets, char_start, char_end):
-    if char_start < 0:
-        return (-1, -1), False
-
-    error = False
-
-    start_index = 0
-    while start_index < len(token_offsets) and token_offsets[start_index][0] < char_start:
-        start_index += 1
-    if token_offsets[start_index][0] != char_start:
-        error = True
-
-    end_index = 0
-    while end_index < len(token_offsets) and token_offsets[end_index][1] < char_end:
-        end_index += 1
-    if token_offsets[end_index][1] != char_end:
-        error = True
-    return (start_index, end_index), error
-
-
 class TextData:
     def __init__(self, data):
         self.data = data
@@ -160,18 +143,6 @@ class TextData:
 def tokenizer(x): return [token for token in spacy_en(x) if not token.is_space]
 
 
-def get_spans(contexts, starts, ends):
-    spans = []
-    for context, start, end in zip(contexts, starts, ends):
-        context_offsets = [(token.idx, token.idx + len(token.text)) for token in context]
-        span, error = char_span_to_token_span(context_offsets, start, end)
-        if error:
-            raise Exception('Failed')
-        spans.append(span)
-
-    return spans
-
-
 def make_vocab(tokens, max_size):
     counter = Counter(tokens)
     ordered_tokens, _ = zip(*counter.most_common())
@@ -200,7 +171,7 @@ class SquadSequence(Sequence):
         for i in self._indices[idx * self._batch_size:(idx + 1) * self._batch_size]:
             lines.append(linecache.getline(self._filename, i + 1))
         data = [row for row in csv.reader(lines, delimiter='\t')]
-        contexts, questions, char_starts, char_ends, answers = zip(*lines)
+        contexts, questions, char_starts, char_ends, answers = zip(*data)
 
         contexts = [tokenizer(x) for x in contexts]
         questions = [tokenizer(x) for x in questions]
@@ -330,15 +301,15 @@ def decode_sequence(question_seq, context_seq):
 
 
 metric = SquadMetric()
-for seq_index in range(10):
-    # Take one sequence (part of the training set)
-    # for trying out decoding.
-    question_seq = encoder_input_data[seq_index][None]
-    context_seq = decoder_input_data[seq_index][None]
-
-    decoded_sentence = decode_sequence(question_seq, context_seq)
-    indices = [i for i, y in enumerate(decoded_sentence) if y == 'start' or y == 'keep']
-    prediction = ' '.join(index_to_token[decoder_texts.data[seq_index][i]] for i in indices)
-    answer = answers[seq_index]
-    metric(prediction, answer)
+# for seq_index in range(10):
+#     # Take one sequence (part of the training set)
+#     # for trying out decoding.
+#     question_seq = encoder_input_data[seq_index][None]
+#     context_seq = decoder_input_data[seq_index][None]
+#
+#     decoded_sentence = decode_sequence(question_seq, context_seq)
+#     indices = [i for i, y in enumerate(decoded_sentence) if y == 'start' or y == 'keep']
+#     prediction = ' '.join(index_to_token[decoder_texts.data[seq_index][i]] for i in indices)
+#     answer = answers[seq_index]
+#     metric(prediction, answer)
 print('EM: {}, F1: {}'.format(*metric.get_metric()))
