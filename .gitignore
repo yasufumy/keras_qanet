@@ -106,3 +106,4 @@ venv.bak/
 data/*
 fra-eng/*
 *.h5
+*.pkl
