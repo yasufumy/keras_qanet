@@ -8,15 +8,10 @@ from collections import Counter
 
 import spacy
 
-import tensorflow as tf
-from keras import backend as K
-from keras.models import Model
-from keras.layers import Input, LSTM, Dense, Embedding, Concatenate
-from keras.engine.topology import Layer
 from keras.utils import Sequence
 import numpy as np
 
-
+from model import SquadBaseline
 from utils import get_spans
 
 
@@ -24,27 +19,27 @@ spacy_en = spacy.load('en_core_web_sm',
                       disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
 
 
-class DotAttentionLayer(Layer):
-    def call(self, inputs):
-        keys, query = inputs
-        if len(K.int_shape(query)) == 2:
-            # when query is a vector
-            query = tf.expand_dims(query, dim=1)
-        scores = tf.matmul(query, keys, transpose_b=True)
-        # scores_mask = tf.expand_dims(tf.sequence_mask(
-        #     lengths=tf.to_int32(tf.squeeze(lengths, axis=1)),
-        #     maxlen=tf.to_int32(tf.shape(scores)[1]),
-        #     dtype=tf.float32), dim=2)
-        # scores = scores * scores_mask + (1. - scores_mask) * tf.float32.min
-        weights = K.softmax(scores, axis=2)
-        return tf.matmul(weights, keys)
-
-    def compute_mask(self, inputs, mask=None):
-        # just feeding query's mask
-        if mask is not None:
-            return mask[1]
-        else:
-            return None
+# class DotAttentionLayer(Layer):
+#     def call(self, inputs):
+#         keys, query = inputs
+#         if len(K.int_shape(query)) == 2:
+#             # when query is a vector
+#             query = tf.expand_dims(query, dim=1)
+#         scores = tf.matmul(query, keys, transpose_b=True)
+#         # scores_mask = tf.expand_dims(tf.sequence_mask(
+#         #     lengths=tf.to_int32(tf.squeeze(lengths, axis=1)),
+#         #     maxlen=tf.to_int32(tf.shape(scores)[1]),
+#         #     dtype=tf.float32), dim=2)
+#         # scores = scores * scores_mask + (1. - scores_mask) * tf.float32.min
+#         weights = K.softmax(scores, axis=2)
+#         return tf.matmul(weights, keys)
+#
+#     def compute_mask(self, inputs, mask=None):
+#         # just feeding query's mask
+#         if mask is not None:
+#             return mask[1]
+#         else:
+#             return None
 
 
 def normalize_answer(text):
@@ -251,27 +246,28 @@ print('Number of unique output tokens:', num_decoder_tokens)
 decoder_token_to_index = {'ignore': 0, 'start': 1, 'keep': 2}
 decoder_index_to_token = ['ignore', 'start', 'keep']
 
-encoder_inputs = Input(shape=(None,))
-embedding = Embedding(len(token_to_index), latent_dim, mask_zero=True)
-encoder = LSTM(latent_dim, return_state=True, return_sequences=True)
-encoder_outputs, state_h, state_c = encoder(embedding(encoder_inputs))
-encoder_states = [state_h, state_c]
+# encoder_inputs = Input(shape=(None,))
+# embedding = Embedding(len(token_to_index), latent_dim, mask_zero=True)
+# encoder = LSTM(latent_dim, return_state=True, return_sequences=True)
+# encoder_outputs, state_h, state_c = encoder(embedding(encoder_inputs))
+# encoder_states = [state_h, state_c]
+#
+#
+# decoder_inputs = Input(shape=(None,))
+# decoder_inputs2 = Input(shape=(None, 3))
+# decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
+# decoder_dense = Dense(num_decoder_tokens, activation='softmax')
+# concat = Concatenate(axis=-1)
+# decoder_outputs, _, _ = decoder_lstm(concat([embedding(decoder_inputs), decoder_inputs2]),
+#                                      initial_state=encoder_states)
+# attention = DotAttentionLayer()
+# attention_outputs = attention([encoder_outputs, decoder_outputs])
+# decoder_outputs = decoder_dense(concat([decoder_outputs, attention_outputs]))
+#
+#
+# model = Model([encoder_inputs, decoder_inputs, decoder_inputs2], decoder_outputs)
 
-
-decoder_inputs = Input(shape=(None,))
-decoder_inputs2 = Input(shape=(None, 3))
-decoder_lstm = LSTM(latent_dim, return_sequences=True, return_state=True)
-decoder_dense = Dense(num_decoder_tokens, activation='softmax')
-concat = Concatenate(axis=-1)
-decoder_outputs, _, _ = decoder_lstm(concat([embedding(decoder_inputs), decoder_inputs2]),
-                                     initial_state=encoder_states)
-attention = DotAttentionLayer()
-attention_outputs = attention([encoder_outputs, decoder_outputs])
-decoder_outputs = decoder_dense(concat([decoder_outputs, attention_outputs]))
-
-
-model = Model([encoder_inputs, decoder_inputs, decoder_inputs2], decoder_outputs)
-
+model, inference = SquadBaseline(len(token_to_index), latent_dim, latent_dim, 3)
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
 train_generator = SquadSequence('data/train-v2.0.txt', batch_size)
 model.fit_generator(
@@ -280,52 +276,52 @@ model.fit_generator(
 model.save('s2s.h5')
 
 
-encoder_model = Model(encoder_inputs, [encoder_outputs] + encoder_states)
-
-# input placeholder
-decoder_state_input_h = Input(shape=(latent_dim,))
-decoder_state_input_c = Input(shape=(latent_dim,))
-encoder_outputs_inputs = Input(shape=(None, latent_dim))
-decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
-# feeding lstm
-decoder_outputs, state_h, state_c = decoder_lstm(
-    concat([embedding(decoder_inputs), decoder_inputs2]), initial_state=decoder_states_inputs)
-attention_outputs = attention([encoder_outputs_inputs, decoder_outputs])
-# model outputs
-decoder_states = [state_h, state_c]
-decoder_outputs = decoder_dense(concat([decoder_outputs, attention_outputs]))
-decoder_model = Model(
-    [decoder_inputs, decoder_inputs2, encoder_outputs_inputs] + decoder_states_inputs,
-    [decoder_outputs] + decoder_states)
-
-
-def decode_sequence(question_seq, context_seq, batch_size):
-    # Encode the input as state vectors.
-    encoder_outputs, *states_value = encoder_model.predict([question_seq])
-
-    decoded_tokens = []
-    action = np.zeros((batch_size, 1, 3))
-    for token in np.transpose(context_seq, [1, 0]):
-        output_tokens, h, c = decoder_model.predict(
-            [token, action, encoder_outputs] + states_value)
-        output_tokens = np.squeeze(output_tokens)
-        sampled_token_indices = np.argmax(output_tokens, axis=1).tolist()
-        sampled_char = [decoder_index_to_token[i] for i in sampled_token_indices]
-        decoded_tokens.append(sampled_char)
-
-        action = np.identity(3)[sampled_token_indices][:, None, :]
-
-        states_value = [h, c]
-
-    return decoded_tokens
+# encoder_model = Model(encoder_inputs, [encoder_outputs] + encoder_states)
+#
+# # input placeholder
+# decoder_state_input_h = Input(shape=(latent_dim,))
+# decoder_state_input_c = Input(shape=(latent_dim,))
+# encoder_outputs_inputs = Input(shape=(None, latent_dim))
+# decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
+# # feeding lstm
+# decoder_outputs, state_h, state_c = decoder_lstm(
+#     concat([embedding(decoder_inputs), decoder_inputs2]), initial_state=decoder_states_inputs)
+# attention_outputs = attention([encoder_outputs_inputs, decoder_outputs])
+# # model outputs
+# decoder_states = [state_h, state_c]
+# decoder_outputs = decoder_dense(concat([decoder_outputs, attention_outputs]))
+# decoder_model = Model(
+#     [decoder_inputs, decoder_inputs2, encoder_outputs_inputs] + decoder_states_inputs,
+#     [decoder_outputs] + decoder_states)
+#
+#
+# def decode_sequence(question_seq, context_seq, batch_size):
+#     # Encode the input as state vectors.
+#     encoder_outputs, *states_value = encoder_model.predict([question_seq])
+#
+#     decoded_tokens = []
+#     action = np.zeros((batch_size, 1, 3))
+#     for token in np.transpose(context_seq, [1, 0]):
+#         output_tokens, h, c = decoder_model.predict(
+#             [token, action, encoder_outputs] + states_value)
+#         output_tokens = np.squeeze(output_tokens)
+#         sampled_token_indices = np.argmax(output_tokens, axis=1).tolist()
+#         sampled_char = [decoder_index_to_token[i] for i in sampled_token_indices]
+#         decoded_tokens.append(sampled_char)
+#
+#         action = np.identity(3)[sampled_token_indices][:, None, :]
+#
+#         states_value = [h, c]
+#
+#     return decoded_tokens
 
 
 metric = SquadMetric()
 dev_generator = SquadTestGenerator('data/dev-v2.0.txt', batch_size)
 for question, context, answer in dev_generator:
-    decoded_sentences = decode_sequence(question, context, batch_size)
+    decoded_sentences = inference(question, context, batch_size)
     for i, sent in enumerate(zip(*decoded_sentences)):
-        indices = [j for j, y in enumerate(sent) if y == 'start' or y == 'keep']
+        indices = [j for j, y in enumerate(sent) if y == 1 or y == 2]
         prediction = ' '.join(index_to_token[context[i][j]] for j in indices)
         metric(prediction, answer[i])
 print('EM: {}, F1: {}'.format(*metric.get_metric()))
