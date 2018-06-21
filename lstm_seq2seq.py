@@ -240,7 +240,7 @@ else:
 
 batch_size = 256  # Batch size for training.
 epochs = 30  # Number of epochs to train for.
-latent_dim = 128 # Latent dimensionality of the encoding space.
+latent_dim = 128  # Latent dimensionality of the encoding space.
 num_encoder_tokens = len(token_to_index)
 num_decoder_tokens = 3
 
