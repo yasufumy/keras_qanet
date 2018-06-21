@@ -234,7 +234,7 @@ else:
         token_to_index, index_to_token = pickle.load(f)
 
 batch_size = 256  # Batch size for training.
-epochs = 30  # Number of epochs to train for.
+epochs = 100  # Number of epochs to train for.
 latent_dim = 128  # Latent dimensionality of the encoding space.
 num_encoder_tokens = len(token_to_index)
 num_decoder_tokens = 3
@@ -267,7 +267,7 @@ decoder_index_to_token = ['ignore', 'start', 'keep']
 #
 # model = Model([encoder_inputs, decoder_inputs, decoder_inputs2], decoder_outputs)
 
-model, inference = SquadBaseline(len(token_to_index), latent_dim, latent_dim, 3)
+model, inference = SquadBaseline(len(token_to_index), latent_dim, latent_dim, 3).build()
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
 train_generator = SquadSequence('data/train-v2.0.txt', batch_size)
 model.fit_generator(
@@ -319,7 +319,7 @@ model.save('s2s.h5')
 metric = SquadMetric()
 dev_generator = SquadTestGenerator('data/dev-v2.0.txt', batch_size)
 for question, context, answer in dev_generator:
-    decoded_sentences = inference(question, context, batch_size)
+    decoded_sentences = inference(question, context)
     for i, sent in enumerate(zip(*decoded_sentences)):
         indices = [j for j, y in enumerate(sent) if y == 1 or y == 2]
         prediction = ' '.join(index_to_token[context[i][j]] for j in indices)
