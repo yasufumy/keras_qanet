@@ -62,7 +62,7 @@ class SquadBaseline:
         # inference
         encoder_model = Model(encoder_inputs, [encoder_outputs] + encoder_states)
         decoder_states_inputs = [Input(shape=(self._hidden_size,)),
-                                 Input(shape=(self._hidde_size,))]
+                                 Input(shape=(self._hidden_size,))]
         encoded_inputs = Input(shape=(None, self._hidden_size))
         decoder_outputs, *decoder_states = self.decode_layer(
             concat([self.embed_layer(decoder_inputs), last_outputs]),
@@ -86,7 +86,7 @@ class SquadBaseline:
             for tokens in np.transpose(context, [1, 0]):
                 outputs, *states = decoder_model.predict(
                     [tokens, last_tokens, encoder_outputs] + states)
-                outputs = np.square(outputs)
+                outputs = np.squeeze(outputs)
                 sampled_tokens = np.argmax(outputs, axis=1).tolist()
                 decoded_tokens.append(sampled_tokens)
 
