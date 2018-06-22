@@ -11,7 +11,8 @@ import spacy
 from keras.utils import Sequence
 import numpy as np
 
-from model import SquadBaseline
+from models import SquadBaseline
+from data import SquadReader, SquadIterator, SquadConverter
 from utils import get_spans
 
 
@@ -225,10 +226,12 @@ decoder_index_to_token = ['ignore', 'start', 'keep']
 
 model, inference = SquadBaseline(len(token_to_index), latent_dim, latent_dim, 3).build()
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-train_generator = SquadSequence('data/train-v2.0.txt', batch_size)
+# train_generator = SquadSequence('data/train-v2.0.txt', batch_size)
+dataset = SquadReader('data/train-v2.0.txt')
+converter = SquadConverter(token_to_index, 1, '<pad>', 3)
+train_generator = SquadIterator(dataset, batch_size, converter)
 model.fit_generator(
-    generator=train_generator, steps_per_epoch=len(train_generator), epochs=epochs,
-    use_multiprocessing=True)
+    generator=train_generator, steps_per_epoch=len(train_generator), epochs=epochs)
 model.save('s2s.h5')
 
 metric = SquadMetric()
