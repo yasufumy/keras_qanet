@@ -5,6 +5,7 @@ import math
 import linecache
 import pickle
 from collections import Counter
+from argparse import ArgumentParser
 
 import spacy
 
@@ -12,8 +13,13 @@ from keras.utils import Sequence
 import numpy as np
 
 from models import SquadBaseline
-from data import SquadReader, SquadIterator, SquadConverter
+from data import SquadReader, SquadIterator, SquadConverter, make_vocab
 from utils import get_spans
+
+
+parser = ArgumentParser()
+parser.add_argument('--epoch', default=100, type=int)
+args = parser.parse_args()
 
 
 spacy_en = spacy.load('en_core_web_sm',
@@ -212,7 +218,7 @@ else:
         token_to_index, index_to_token = pickle.load(f)
 
 batch_size = 256  # Batch size for training.
-epochs = 100  # Number of epochs to train for.
+epochs = args.epoch  # Number of epochs to train for.
 latent_dim = 128  # Latent dimensionality of the encoding space.
 num_encoder_tokens = len(token_to_index)
 num_decoder_tokens = 3
