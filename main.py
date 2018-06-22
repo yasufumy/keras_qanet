@@ -9,12 +9,10 @@ from argparse import ArgumentParser
 
 import spacy
 
-from keras.utils import Sequence
 import numpy as np
 
 from models import SquadBaseline
-from data import SquadReader, SquadIterator, SquadConverter, make_vocab
-from utils import get_spans
+from data import SquadReader, Iterator, SquadConverter, SquadTestConverter, make_vocab
 
 
 parser = ArgumentParser()
@@ -178,13 +176,15 @@ model, inference = SquadBaseline(len(token_to_index), latent_dim, latent_dim, 3)
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
 dataset = SquadReader('data/train-v2.0.txt')
 converter = SquadConverter(token_to_index, 1, '<pad>', 3)
-train_generator = SquadIterator(dataset, batch_size, converter)
+train_generator = Iterator(dataset, batch_size, converter)
 model.fit_generator(
     generator=train_generator, steps_per_epoch=len(train_generator), epochs=epochs)
 model.save('s2s.h5')
 
 metric = SquadMetric()
-dev_generator = SquadTestGenerator('data/dev-v2.0.txt', batch_size)
+dataset = SquadReader('data/dev-v2.0.txt')
+converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
+dev_generator = Iterator(dataset, batch_size, converter, False, False)
 for question, context, answer in dev_generator:
     decoded_sentences = inference(question, context)
     for i, sent in enumerate(zip(*decoded_sentences)):
