@@ -124,3 +124,13 @@ class SquadConverter:
         return np.array([
             [self._token_to_index.get(token, self._unk_index) for token in text]
             for text in texts], dtype=np.int32)
+
+
+class SquadTestConverter(SquadConverter):
+    def __call__(self, batch):
+        contexts, questions, _, _, answers = zip(*batch)
+        contexts = [self._tokenizer(context) for context in contexts]
+        questions = [self._tokenizer(question) for question in questions]
+        context_batch = self._process_text(contexts)
+        question_batch = self._process_text(questions)
+        return question_batch, context_batch, answers
