@@ -30,16 +30,16 @@ class SquadReader:
             self._total_data = len(f.readlines()) - 1
 
     def __getitem__(self, i):
-        if isinstance(i, int):
-            if i > self._total_data:
-                raise IndexError('Invalid Index')
-            lines = [linecache.getline(self._filename, i + 1)]
-            data = next(csv.reader(lines, delimiter='\t'))
-        elif isinstance(i, slice):
+        if isinstance(i, slice):
             lines = [
                 linecache.getline(self._filename, i + 1)
                 for i in range(i.start or 0, min(i.stop, len(self)), i.step or 1)]
             data = [row for row in csv.reader(lines, delimiter='\t')]
+        else:
+            if i > self._total_data:
+                raise IndexError('Invalid Index')
+            lines = [linecache.getline(self._filename, i + 1)]
+            data = next(csv.reader(lines, delimiter='\t'))
         return data
 
     def __len__(self):
