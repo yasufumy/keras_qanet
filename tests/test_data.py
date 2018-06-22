@@ -1,6 +1,6 @@
 from unittest.mock import patch, mock_open
 from unittest import TestCase
-from data import make_vocab, SquadReader, SquadIterator, SquadConverter, SquadTestConverter
+from data import make_vocab, SquadReader, Iterator, SquadConverter, SquadTestConverter
 
 
 class TestData(TestCase):
@@ -48,39 +48,57 @@ class TestSquadReader(TestCase):
         patch.stopall()
 
 
-class TestSquadIterator(TestCase):
+class TestIterator(TestCase):
     def setUp(self):
         dataset = range(100)
         self.batch_size = 32
 
         def converter(x): return x
 
-        self.generator = SquadIterator(dataset, self.batch_size, converter)
+        self.generator1 = Iterator(dataset, self.batch_size, converter)
+        self.generator2 = Iterator(dataset, self.batch_size, converter, False, False)
         self.dataset = dataset
         self.converter = converter
 
     def test_init(self):
-        self.assertEqual(self.generator._dataset, self.dataset)
-        self.assertEqual(self.generator._batch_size, self.batch_size)
-        self.assertEqual(self.generator._converter, self.converter)
-        self.assertEqual(self.generator._current_position, 0)
-        self.assertEqual(len(self.generator._order), len(self.generator._dataset))
+        self.assertEqual(self.generator1._dataset, self.dataset)
+        self.assertEqual(self.generator1._batch_size, self.batch_size)
+        self.assertEqual(self.generator1._converter, self.converter)
+        self.assertEqual(self.generator1._current_position, 0)
+        self.assertEqual(len(self.generator1._order), len(self.generator1._dataset))
+
+        self.assertEqual(self.generator2._dataset, self.dataset)
+        self.assertEqual(self.generator2._batch_size, self.batch_size)
+        self.assertEqual(self.generator2._converter, self.converter)
+        self.assertEqual(self.generator2._current_position, 0)
+        self.assertEqual(self.generator2._order, None)
 
     def test_len(self):
-        self.assertEqual(len(self.generator), 4)
+        self.assertEqual(len(self.generator1), 4)
+        self.assertEqual(len(self.generator2), 4)
 
     def test_next(self):
         for i in range(10):
-            batch = next(self.generator)
+            batch = next(self.generator1)
             self.assertEqual(len(batch), self.batch_size)
+        for i, batch in enumerate(self.generator2):
+            if i < len(self.generator2) - 1:
+                self.assertEqual(len(batch), self.batch_size)
+            else:
+                self.assertEqual(len(batch), 4)
 
     def test_reset(self):
-        self.generator.reset()
-        self.assertEqual(self.generator._current_position, 0)
-        self.assertEqual(len(self.generator._order), len(self.generator._dataset))
+        self.generator1.reset()
+        self.assertEqual(self.generator1._current_position, 0)
+        self.assertEqual(len(self.generator1._order), len(self.generator1._dataset))
+
+        self.generator2.reset()
+        self.assertEqual(self.generator2._current_position, 0)
+        self.assertEqual(self.generator2._order, None)
 
     def test_iter(self):
-        self.assertEqual(self.generator.__iter__(), self.generator)
+        self.assertEqual(self.generator1.__iter__(), self.generator1)
+        self.assertEqual(self.generator2.__iter__(), self.generator2)
 
 
 class TestSquadConverter(TestCase):
