@@ -33,9 +33,6 @@ def get_spans(contexts, starts, ends):
     return spans
 
 
-def tokenizer(x): return [(token.idx, token.text) for token in spacy_en(x) if not token.is_space]
-
-
 if __name__ == '__main__':
     import os
     import csv
@@ -46,6 +43,8 @@ if __name__ == '__main__':
 
     spacy_en = spacy.load('en_core_web_sm',
                           disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
+
+    def tokenizer(x): return [(token.idx, token.text) for token in spacy_en(x) if not token.is_space]
 
     if not os.path.exists('data_list.pkl'):
         with open('data/train-v2.0.txt') as f:
