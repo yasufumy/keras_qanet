@@ -30,27 +30,39 @@ class SquadReader:
             self._total_data = len(f.readlines()) - 1
 
     def __getitem__(self, i):
-        if i > self._total_data:
-            raise IndexError('Invalid Index')
-        line = linecache.getline(self._filename, i + 1)
-        data = next(csv.reader([line], delimiter='\t'))
+        if isinstance(i, int):
+            if i > self._total_data:
+                raise IndexError('Invalid Index')
+            lines = [linecache.getline(self._filename, i + 1)]
+            data = next(csv.reader(lines, delimiter='\t'))
+        elif isinstance(i, slice):
+            lines = [
+                linecache.getline(self._filename, i + 1)
+                for i in range(i.start or 0, min(i.stop, len(self)), i.step or 1)]
+            data = [row for row in csv.reader(lines, delimiter='\t')]
         return data
 
     def __len__(self):
         return self._total_data
 
 
-class SquadIterator:
-    def __init__(self, dataset, batch_size, converter):
+class Iterator:
+    def __init__(self, dataset, batch_size, converter, repeat=True, shuffle=True):
         self._dataset = dataset
         self._batch_size = batch_size
         self._converter = converter
+        self._repeat = repeat
+        self._shuffle = shuffle
+        self._epoch = 0
 
         self.reset()
 
     def reset(self):
         self._current_position = 0
-        self._order = np.random.permutation(len(self._dataset))
+        if self._shuffle:
+            self._order = np.random.permutation(len(self._dataset))
+        else:
+            self._order = None
 
     def __len__(self):
         return math.ceil(len(self._dataset) / self._batch_size)
@@ -59,19 +71,29 @@ class SquadIterator:
         return self
 
     def __next__(self):
+        if not self._repeat and self._epoch > 0:
+            raise StopIteration
         i = self._current_position
         i_end = i + self._batch_size
         N = len(self._dataset)
 
-        batch = [self._dataset[index] for index in self._order[i:i_end]]
+        if self._order is not None:
+            batch = [self._dataset[index] for index in self._order[i:i_end]]
+        else:
+            batch = self._dataset[i:i_end]
 
         if i_end >= N:
-            rest = i_end - N
-            np.random.shuffle(self._order)
-            if rest > 0:
-                batch.extend(
-                    [self._dataset[index] for index in self._order[:rest]])
-            self._current_position = rest
+            if self._repeat:
+                rest = i_end - N
+                np.random.shuffle(self._order)
+                if rest > 0:
+                    batch.extend(
+                        [self._dataset[index] for index in self._order[:rest]])
+                self._current_position = rest
+            else:
+                self._current_position = 0
+
+            self._epoch += 1
         else:
             self._current_position = i_end
 
