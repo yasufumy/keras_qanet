@@ -1,15 +1,11 @@
 import os
 import csv
 import string
-import math
-import linecache
 import pickle
 from collections import Counter
 from argparse import ArgumentParser
 
 import spacy
-
-import numpy as np
 
 from models import SquadBaseline
 from data import SquadReader, Iterator, SquadConverter, SquadTestConverter, make_vocab
@@ -87,62 +83,7 @@ class SquadMetric:
         return em, f1
 
 
-class TextData:
-    def __init__(self, data):
-        self.data = data
-
-    def to_array(self, token_to_index, unk_index, dtype=np.int32):
-        self.data = np.array([[token_to_index.get(token, unk_index)
-                               for token in x] for x in self.data]).astype(np.int32)
-        return self
-
-    def reshape(self, shape):
-        self.data = self.data.reshape(shape)
-        return self
-
-    def getattr(self, attr):
-        self.data = [[getattr(token, attr) for token in x] for x in self.data]
-        return self
-
-    def padding(self, pad_token):
-        max_length = self.max_length
-        self.data = [x + [pad_token] * (max_length - len(x)) for x in self.data]
-        return self
-
-    @property
-    def max_length(self):
-        return max(len(x) for x in self.data)
-
-    def __len__(self):
-        return len(self.data)
-
-
 def tokenizer(x): return [token for token in spacy_en(x) if not token.is_space]
-
-
-class SquadTestGenerator:
-    def __init__(self, filename, batch_size):
-        self._filename = filename
-        with open(filename) as f:
-            self._total_data = len(f.readlines()) - 1
-        self._batch_size = batch_size
-        indices = range(self._total_data)
-        self._indices = [indices[i:i + self._batch_size] for i in range(0, self._total_data, self._batch_size)]
-
-    def __len__(self):
-        return int(math.ceil(self._total_data / float(self._batch_size)))
-
-    def __iter__(self):
-        for indices in self._indices:
-            contexts, questions, _, _, answers = zip(*csv.reader(
-                [linecache.getline(self._filename, i + 1) for i in indices], delimiter='\t'))
-
-            contexts = [tokenizer(x) for x in contexts]
-            questions = [tokenizer(x) for x in questions]
-            question_batch = TextData(questions).getattr('text').padding('<pad>').to_array(token_to_index, 0).data
-            context_batch = TextData(contexts).getattr('text').padding('<pad>').to_array(token_to_index, 0).data
-
-            yield question_batch, context_batch, answers
 
 
 if not os.path.exists('vocab.pkl'):
