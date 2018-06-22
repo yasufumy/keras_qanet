@@ -122,62 +122,6 @@ class TextData:
 def tokenizer(x): return [token for token in spacy_en(x) if not token.is_space]
 
 
-def make_vocab(tokens, max_size):
-    counter = Counter(tokens)
-    ordered_tokens, _ = zip(*counter.most_common())
-
-    index_to_token = ('<pad>', '<unk>', '<s>', '</s>') + ordered_tokens
-    if len(index_to_token) > max_size:
-        index_to_token = index_to_token[: max_size]
-    indices = range(len(index_to_token))
-    token_to_index = dict(zip(index_to_token, indices))
-    return token_to_index, list(index_to_token)
-
-
-class SquadSequence(Sequence):
-    def __init__(self, filename, batch_size):
-        self._filename = filename
-        with open(filename) as f:
-            self._total_data = len(f.readlines()) - 1
-        self._batch_size = batch_size
-        self._indices = np.random.permutation(self._total_data)
-
-    def __len__(self):
-        return int(math.ceil(self._total_data / float(self._batch_size)))
-
-    def __getitem__(self, idx):
-        lines = []
-        for i in self._indices[idx * self._batch_size:(idx + 1) * self._batch_size]:
-            lines.append(linecache.getline(self._filename, i + 1))
-        data = [row for row in csv.reader(lines, delimiter='\t')]
-        contexts, questions, char_starts, char_ends, answers = zip(*data)
-
-        contexts = [tokenizer(x) for x in contexts]
-        questions = [tokenizer(x) for x in questions]
-        char_starts = [int(x) for x in char_starts]
-        char_ends = [int(x) for x in char_ends]
-        question_batch = TextData(questions).getattr('text').padding('<pad>').to_array(token_to_index, 0).data
-        context_batch = TextData(contexts).getattr('text').padding('<pad>').to_array(token_to_index, 0).data
-
-        target_batch = np.zeros(context_batch.shape, dtype=np.int32)
-        span_batch = np.zeros(context_batch.shape + (3,))
-        spans = get_spans(contexts, char_starts, char_ends)
-        for i, spans in enumerate(spans):
-            if spans[0] >= 0:
-                start = spans[0]
-                end = spans[1]
-                target_batch[i, start] = 1
-                target_batch[i, start + 1: end + 1] = 2
-                if i < len(spans):
-                    span_batch[i + 1, start, 1] = 1.
-                    span_batch[i + 1, start + 1: end + 1, 2] = 1.
-
-        return [question_batch, context_batch, span_batch], target_batch[:, :, None]
-
-    def on_epoch_end(self):
-        self._indices = np.random.permutation(self._total_data)
-
-
 class SquadTestGenerator:
     def __init__(self, filename, batch_size):
         self._filename = filename
@@ -232,7 +176,6 @@ decoder_index_to_token = ['ignore', 'start', 'keep']
 
 model, inference = SquadBaseline(len(token_to_index), latent_dim, latent_dim, 3).build()
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-# train_generator = SquadSequence('data/train-v2.0.txt', batch_size)
 dataset = SquadReader('data/train-v2.0.txt')
 converter = SquadConverter(token_to_index, 1, '<pad>', 3)
 train_generator = SquadIterator(dataset, batch_size, converter)
