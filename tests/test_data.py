@@ -1,6 +1,6 @@
 from unittest.mock import patch, mock_open
 from unittest import TestCase
-from data import make_vocab, SquadReader, SquadIterator, SquadConverter
+from data import make_vocab, SquadReader, SquadIterator, SquadConverter, SquadTestConverter
 
 
 class TestData(TestCase):
@@ -84,18 +84,19 @@ class TestSquadIterator(TestCase):
 
 
 class TestSquadConverter(TestCase):
+    batch = [[
+        'Rock n Roll is a risk. You risk being ridiculed.',
+        'What is your risk?',
+        38, 47,
+        'ridiculed'
+    ]]
+
+    token_to_index = {'<pad>': 0, '<unk>': 1, 'is': 2, 'a': 3, 'risk': 4,
+                      '.': 5, 'You': 6, 'being': 7, 'ridiculed': 8, 'What': 9,
+                      'your': 10}
+
     def setUp(self):
-        self.batch = [[
-            'Rock n Roll is a risk. You risk being ridiculed.',
-            'What is your risk?',
-            38, 47,
-            'ridiculed'
-        ]]
-        token_to_index = {'<pad>': 0, '<unk>': 1, 'is': 2, 'a': 3, 'risk': 4,
-                          '.': 5, 'You': 6, 'being': 7, 'ridiculed': 8, 'What': 9,
-                          'your': 10}
-        self.converter = SquadConverter(token_to_index, 1, '<pad>', 3)
-        self.token_to_index = token_to_index
+        self.converter = SquadConverter(self.token_to_index, 1, '<pad>', 3)
 
     def test_init(self):
         self.assertEqual(self.converter._unk_index, 1)
@@ -127,3 +128,19 @@ class TestSquadConverter(TestCase):
         batch = self.converter._process_text(contexts)
         context = np.array([[1, 1, 1, 2, 3, 4, 5, 6, 4, 7, 8, 5]], dtype=np.int32)
         np.testing.assert_array_equal(batch, context)
+
+
+class TestSquadTestConverter(TestSquadConverter):
+    def setUp(self):
+        self.converter = SquadTestConverter(self.token_to_index, 1, '<pad>', 3)
+
+    def test_call(self):
+        import numpy as np
+
+        batch = self.converter(self.batch)
+        question = np.array([[9, 2, 10, 4, 1]], dtype=np.int32)
+        context = np.array([[1, 1, 1, 2, 3, 4, 5, 6, 4, 7, 8, 5]], dtype=np.int32)
+        self.assertEqual(len(batch), 3)
+        np.testing.assert_array_equal(batch[0], question)
+        np.testing.assert_array_equal(batch[1], context)
+        self.assertEqual(batch[2], ('ridiculed',))
