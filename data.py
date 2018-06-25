@@ -1,3 +1,4 @@
+import pickle
 import csv
 import math
 import linecache
@@ -21,6 +22,33 @@ def make_vocab(tokens, min_count, max_vocab_size,
     indices = range(len(index_to_token))
     token_to_index = dict(zip(index_to_token, indices))
     return token_to_index, list(index_to_token)
+
+
+def load_squad_tokens(filename, tokenizer):
+    with open(filename) as f:
+        data = [row for row in csv.reader(f, delimiter='\t')]
+    print(data)
+    data = [[tokenizer(x[0]), tokenizer(x[1])] for x in data]
+    print(data)
+    contexts, questions = zip(*data)
+    tokens = (token for tokens in contexts + questions for token in tokens)
+    return tokens
+
+
+class Vocabulary:
+    @staticmethod
+    def build(tokens, min_count, max_vocab_size, speicial_tokens, savefile=None):
+        token_to_index, index_to_token = make_vocab(tokens, min_count, max_vocab_size, speicial_tokens)
+        if savefile is not None:
+            with open(savefile, mode='wb') as f:
+                pickle.dump((token_to_index, index_to_token), f)
+        return token_to_index, index_to_token
+
+    @staticmethod
+    def load(filename):
+        with open(filename, mode='rb') as f:
+            token_to_index, index_to_token = pickle.load(f)
+        return token_to_index, index_to_token
 
 
 class SquadReader:
