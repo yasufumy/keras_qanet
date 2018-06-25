@@ -7,6 +7,7 @@ import spacy
 
 from models import SquadBaseline
 from data import SquadReader, Iterator, SquadConverter, SquadTestConverter, make_vocab
+from trainer import SquadTrainer
 from metrics import SquadMetric
 
 
@@ -54,8 +55,7 @@ model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
 dataset = SquadReader('data/train-v2.0.txt')
 converter = SquadConverter(token_to_index, 1, '<pad>', 3)
 train_generator = Iterator(dataset, batch_size, converter)
-model.fit_generator(
-    generator=train_generator, steps_per_epoch=len(train_generator), epochs=epochs)
+trainer = SquadTrainer(model, train_generator, epochs)
 model.save('s2s.h5')
 
 metric = SquadMetric()
