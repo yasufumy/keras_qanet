@@ -143,7 +143,7 @@ class TestSquadConverter(TestCase):
     ]]
 
     token_to_index = {'<pad>': 0, '<unk>': 1, 'is': 2, 'a': 3, 'risk': 4,
-                      '.': 5, 'You': 6, 'being': 7, 'ridiculed': 8, 'What': 9,
+                      '.': 5, 'you': 6, 'being': 7, 'ridiculed': 8, 'what': 9,
                       'your': 10}
 
     def setUp(self):
