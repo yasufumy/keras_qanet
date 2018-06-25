@@ -16,7 +16,10 @@ def make_vocab(tokens, min_count, max_vocab_size,
     counter = Counter(tokens)
     ordered_tokens, _ = zip(*takewhile(lambda x: x[1] >= min_count,
                                        counter.most_common()))
-    index_to_token = speicial_tokens + ordered_tokens
+    if speicial_tokens is not None:
+        index_to_token = speicial_tokens + ordered_tokens
+    else:
+        index_to_token = ordered_tokens
     if len(index_to_token) > max_vocab_size:
         index_to_token = index_to_token[:max_vocab_size]
     indices = range(len(index_to_token))
