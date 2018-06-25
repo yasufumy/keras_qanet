@@ -9,6 +9,7 @@ from models import SquadBaseline
 from data import SquadReader, Iterator, SquadConverter, SquadTestConverter, make_vocab
 from trainer import SquadTrainer
 from metrics import SquadMetric
+from utils import evaluate
 
 
 parser = ArgumentParser()
@@ -62,10 +63,5 @@ metric = SquadMetric()
 dataset = SquadReader('data/dev-v2.0.txt')
 converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
 dev_generator = Iterator(dataset, batch_size, converter, False, False)
-for question, context, answer in dev_generator:
-    decoded_sentences = inference(question, context)
-    for i, sent in enumerate(zip(*decoded_sentences)):
-        indices = [j for j, y in enumerate(sent) if y == 1 or y == 2]
-        prediction = ' '.join(index_to_token[context[i][j]] for j in indices)
-        metric(prediction, answer[i])
-print('EM: {}, F1: {}'.format(*metric.get_metric()))
+em_score, f1_score = evaluate(inference, dev_generator, metric, 1, 2, index_to_token)
+print('EM: {}, F1: {}'.format(em_score, f1_score))
