@@ -1,12 +1,11 @@
 import os
-import csv
-import pickle
 from argparse import ArgumentParser
 
 import spacy
 
 from models import SquadBaseline
-from data import SquadReader, Iterator, SquadConverter, SquadTestConverter, make_vocab
+from data import SquadReader, Iterator, SquadConverter, SquadTestConverter, Vocabulary,\
+    load_squad_tokens
 from trainer import SquadTrainer
 from metrics import SquadMetric
 from utils import evaluate
@@ -21,22 +20,16 @@ spacy_en = spacy.load('en_core_web_sm',
                       disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
 
 
-def tokenizer(x): return [token for token in spacy_en(x) if not token.is_space]
+def tokenizer(x): return [token.text.lower() for token in spacy_en(x) if not token.is_space]
 
 
 if not os.path.exists('vocab.pkl'):
-    with open('data/squad_train_v2.0/train-v2.0.txt') as f:
-        data = [row for row in csv.reader(f, delimiter='\t')]
-    data = [[tokenizer(x[0]), tokenizer(x[1]), int(x[2]), int(x[3]), x[4]]
-            for x in data]
-    contexts, questions, char_starts, char_ends, answers = zip(*data)
-    tokens = (token.text for tokens in contexts + questions for token in tokens)
-    token_to_index, index_to_token = make_vocab(tokens, 30000)
-    with open('vocab.pkl', mode='wb') as f:
-        pickle.dump((token_to_index, index_to_token), f)
+    squad_tokens = load_squad_tokens('./data/train-v2.0.txt')
+    token_to_index, index_to_token = Vocabulary.build(
+        squad_tokens, 5, 3000, ('<pad>', '<unk>'), 'vocab.pkl')
+
 else:
-    with open('vocab.pkl', mode='rb') as f:
-        token_to_index, index_to_token = pickle.load(f)
+    token_to_index, index_to_token = Vocabulary.load('vocab.pkl')
 
 batch_size = 256  # Batch size for training.
 epochs = args.epoch  # Number of epochs to train for.
