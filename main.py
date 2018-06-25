@@ -50,6 +50,7 @@ dataset = SquadReader('data/train-v2.0.txt')
 converter = SquadConverter(token_to_index, 1, '<pad>', 3)
 train_generator = Iterator(dataset, batch_size, converter)
 trainer = SquadTrainer(model, train_generator, epochs)
+trainer.run()
 model.save('s2s.h5')
 
 metric = SquadMetric()
