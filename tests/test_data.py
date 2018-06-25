@@ -1,6 +1,7 @@
 from unittest.mock import patch, mock_open
 from unittest import TestCase
-from data import make_vocab, SquadReader, Iterator, SquadConverter, SquadTestConverter
+from data import make_vocab, load_squad_tokens, SquadReader, Iterator,\
+    SquadConverter, SquadTestConverter, Vocabulary
 
 
 class TestData(TestCase):
@@ -19,6 +20,38 @@ class TestData(TestCase):
         self.assertEqual(index_to_token[1], '<unk>')
         self.assertEqual(index_to_token[2], '<s>')
         self.assertEqual(index_to_token[3], '</s>')
+
+    def test_load_squad_tokens(self):
+        tokenizer = str.split
+        data = 'a b c d\te f g h i j k\nl m n o p\tq r s t u'
+        filename = '/path/to/squad.tsv'
+        open_ = patch('data.open', mock_open(read_data=data)).start()
+        csv_reader = patch('data.csv.reader').start()
+        csv_reader.return_value = [row.split('\t') for row in data.split('\n')]
+        tokens = load_squad_tokens(filename, tokenizer)
+        self.assertCountEqual(list(tokens), data.split())
+        open_.assert_called_with(filename)
+        csv_reader.assert_called_with(open_.return_value, delimiter='\t')
+        patch.stopall()
+
+
+class TestVocabulary(TestCase):
+    def test_build(self):
+        tokens = ['rock', 'n', 'roll']
+        token_to_index, index_to_token = Vocabulary.build(tokens, 1, 4, ('<pad>',), None)
+        tokens += ['<pad>']
+        self.assertCountEqual(token_to_index.keys(), tokens)
+
+    def test_load(self):
+        filename = '/path/to/vocab.pkl'
+        open_ = patch('data.open', mock_open()).start()
+        pickle_load = patch('data.pickle.load').start()
+        pickle_load.return_value = ('token_to_index', 'index_to_token')
+        token_to_index, index_to_token = Vocabulary.load(filename)
+        self.assertEqual(token_to_index, 'token_to_index')
+        self.assertEqual(index_to_token, 'index_to_token')
+        open_.assert_called_with(filename, mode='rb')
+        pickle_load.assert_called_with(open_.return_value)
 
 
 class TestSquadReader(TestCase):
