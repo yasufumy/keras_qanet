@@ -33,6 +33,17 @@ def get_spans(contexts, starts, ends):
     return spans
 
 
+def evaluate(inference, test_generator, metric, start_id, keep_id, index_to_token):
+    for question, context, answer in test_generator:
+        decoded_tokens = inference(question, context)
+        for i, token in enumerate(zip(*decoded_tokens)):
+            indices = [j for j, y in enumerate(token)
+                       if y == start_id or y == keep_id]
+            prediction = ' '.join(index_to_token[context[i][j]] for j in indices)
+            metric(prediction, answer[i])
+    return metric.get_metric()
+
+
 if __name__ == '__main__':
     import os
     import csv
