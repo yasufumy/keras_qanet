@@ -129,7 +129,7 @@ class Iterator:
 
 
 class SquadConverter:
-    def __init__(self, token_to_index, unk_index, pad_token, categories):
+    def __init__(self, token_to_index, unk_index, pad_token, categories, lower=True):
         spacy_en = spacy.load(
             'en_core_web_sm', disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
 
@@ -141,6 +141,7 @@ class SquadConverter:
         self._unk_index = unk_index
         self._pad_token = pad_token
         self._categories = categories
+        self._lower = str.lower if lower else lambda x: x
 
     def __call__(self, batch):
         contexts, questions, starts, ends, answers = zip(*batch)
@@ -168,7 +169,7 @@ class SquadConverter:
         return [question_batch, context_batch, input_span_batch], output_span_batch[:, :, None]
 
     def _process_text(self, texts):
-        texts = [[token.text for token in text] for text in texts]
+        texts = [[self._lower(token.text) for token in text] for text in texts]
         max_length = max(len(x) for x in texts)
         texts = [x + [self._pad_token] * (max_length - len(x)) for x in texts]
         return np.array([
