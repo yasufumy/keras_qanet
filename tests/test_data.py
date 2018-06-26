@@ -23,15 +23,13 @@ class TestData(TestCase):
 
     def test_load_squad_tokens(self):
         tokenizer = str.split
-        data = 'a b c d\te f g h i j k\nl m n o p\tq r s t u'
+        read_data = 'a b c d\te f g h i j k\nl m n o p\tq r s t u'
         filename = '/path/to/squad.tsv'
-        open_ = patch('data.open', mock_open(read_data=data)).start()
-        csv_reader = patch('data.csv.reader').start()
-        csv_reader.return_value = [row.split('\t') for row in data.split('\n')]
+        open_ = patch('data.open', mock_open(read_data=read_data)).start()
+        open_.return_value.__iter__.return_value = read_data.split('\n')
         tokens = load_squad_tokens(filename, tokenizer)
-        self.assertCountEqual(list(tokens), data.split())
+        self.assertCountEqual(list(tokens), read_data.split())
         open_.assert_called_with(filename)
-        csv_reader.assert_called_with(open_.return_value, delimiter='\t')
         patch.stopall()
 
 
