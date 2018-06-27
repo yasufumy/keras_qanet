@@ -102,3 +102,38 @@ class MultiHeadAttention(Layer):
 
     def compute_output_shape(self, input_shape):
         return input_shape[1]
+
+
+class ContextQueryAttention(Layer):
+    def __init__(self, output_size, cont_limit, ques_limit, dropout, **kwargs):
+        self.output_size = output_size
+        self.cont_limit = cont_limit
+        self.ques_limit = ques_limit
+        self.dropout = dropout
+        super().__init__(**kwargs)
+
+    def apply_mask(self, inputs, seq_len, axis=1, time_dim=1, mode='add'):
+        if seq_len is None:
+            return inputs
+        else:
+            seq_len = K.cat(seq_len, tf.int32)
+            mask = K.one_hot(seq_len[:, 0], K.shape(inputs)[time_dim])
+            mask = 1 - K.cumsum(mask, 1)
+            mask = K.expand_dims(mask, axis)
+            if mode == 'add':
+                return inputs - (1 - mask) * 1e12
+            if mode == 'mul':
+                return inputs * mask
+
+    def call(self, inputs, mask=None):
+        x_cont, x_ques, cont_len, ques_len = inputs
+        S = tf.matmul(x_cont, x_ques, transpose_b=True)
+        S_bar = tf.nn.softmax(self.apply_mask(S, ques_len, axis=1, time_dim=2))
+        S_T = K.permute_dimensions(tf.nn.softmax(self.apply_mask(S, cont_len, axis=2, time_dim=1), dim=1), (0, 2, 1))
+        c2q = tf.matmul(S_bar, x_ques)
+        q2c = tf.matmul(tf.matmul(S_bar, S_T), x_cont)
+        result = K.concatenate([x_cont, c2q, x_cont * c2q, x_cont * q2c], axis=-1)
+        return result
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0][0], input_shape[0][1], self.output_size)
