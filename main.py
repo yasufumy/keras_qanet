@@ -3,12 +3,12 @@ from argparse import ArgumentParser
 
 import spacy
 
-from models import SquadBaseline
-from data import SquadReader, Iterator, SquadConverter, SquadTestConverter, Vocabulary,\
+from models import LightQANet
+from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
     load_squad_tokens
 from trainer import SquadTrainer
-from metrics import SquadMetric
-from utils import evaluate
+# from metrics import SquadMetric
+# from utils import evaluate
 
 
 parser = ArgumentParser()
@@ -44,7 +44,7 @@ print('Number of unique output tokens:', num_decoder_tokens)
 decoder_token_to_index = {'ignore': 0, 'start': 1, 'keep': 2}
 decoder_index_to_token = ['ignore', 'start', 'keep']
 
-model, inference = SquadBaseline(len(token_to_index), latent_dim, latent_dim, 3).build()
+model = LightQANet(len(token_to_index), latent_dim)
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
 dataset = SquadReader('data/train-v2.0.txt')
 converter = SquadConverter(token_to_index, 1, '<pad>', 3)
@@ -53,9 +53,9 @@ trainer = SquadTrainer(model, train_generator, epochs)
 trainer.run()
 model.save('s2s.h5')
 
-metric = SquadMetric()
-dataset = SquadReader('data/dev-v2.0.txt')
-converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
-dev_generator = Iterator(dataset, batch_size, converter, False, False)
-em_score, f1_score = evaluate(inference, dev_generator, metric, 1, 2, index_to_token)
-print('EM: {}, F1: {}'.format(em_score, f1_score))
+# metric = SquadMetric()
+# dataset = SquadReader('data/dev-v2.0.txt')
+# converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
+# dev_generator = Iterator(dataset, batch_size, converter, False, False)
+# em_score, f1_score = evaluate(inference, dev_generator, metric, 1, 2, index_to_token)
+# print('EM: {}, F1: {}'.format(em_score, f1_score))
