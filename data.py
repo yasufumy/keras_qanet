@@ -132,7 +132,8 @@ class Iterator:
 
 
 class SquadConverter:
-    def __init__(self, token_to_index, unk_index, pad_token, categories, lower=True):
+    def __init__(self, token_to_index, unk_index, pad_token, categories, lower=True,
+                 question_max_len=50, context_max_len=400):
         spacy_en = spacy.load(
             'en_core_web_sm', disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
 
@@ -145,6 +146,8 @@ class SquadConverter:
         self._pad_token = pad_token
         self._categories = categories
         self._lower = str.lower if lower else lambda x: x
+        self._question_max_len = question_max_len
+        self._context_max_len = context_max_len
 
     def __call__(self, batch):
         contexts, questions, starts, ends, answers = zip(*batch)
@@ -153,27 +156,21 @@ class SquadConverter:
         questions = [self._tokenizer(question) for question in questions]
         starts = [int(start) for start in starts]
         ends = [int(end) for end in ends]
-        spans = get_spans(contexts, starts, ends)
+        starts, ends = zip(*get_spans(contexts, starts, ends))
 
-        context_batch = self._process_text(contexts)
-        question_batch = self._process_text(questions)
-        output_span_batch = np.zeros(context_batch.shape, dtype=np.int32)
-        input_span_batch = np.zeros(context_batch.shape + (self._categories,))
-        for i, span in enumerate(spans):
-            if span[0] >= 0:
-                start, end = span
-                output_span_batch[i, start] = 1
-                output_span_batch[i, start + 1:end + 1] = 2
-                input_span_batch[i, :start + 1, 0] = 1.
-                if start + 1 < input_span_batch.shape[1]:
-                    input_span_batch[i,  start + 1, 1] = 1.
-                if start + 2 < input_span_batch.shape[1]:
-                    input_span_batch[i,  start + 2: end + 1, 2] = 1.
-        return [question_batch, context_batch, input_span_batch], output_span_batch[:, :, None]
+        context_batch = self._process_text(contexts, self._context_max_len)
+        question_batch = self._process_text(questions, self._question_max_len)
+        start_batch = np.array(starts, dtype=np.int32)
+        end_batch = np.array(ends, dtype=np.int32)
+        return [question_batch, context_batch], [start_batch, end_batch]
 
-    def _process_text(self, texts):
+    def _process_text(self, texts, max_length):
         texts = [[self._lower(token.text) for token in text] for text in texts]
-        max_length = max(len(x) for x in texts)
+        length = max(len(text) for text in texts)
+        if length < max_length:
+            max_length = length
+        else:
+            texts = [text[:max_length] for text in texts]
         texts = [x + [self._pad_token] * (max_length - len(x)) for x in texts]
         return np.array([
             [self._token_to_index.get(token, self._unk_index) for token in text]
