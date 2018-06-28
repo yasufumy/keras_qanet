@@ -152,8 +152,8 @@ def mask_logits(inputs, mask, mask_value=tf.float32.min, axis=1, time_dim=1):
 
 class LightQANet:
     def __init__(self, vocab_size, embed_size, filters=128, cont_limit=400, ques_limit=50):
-        self.cont_limit = 400
-        self.ques_limit = 50
+        self.cont_limit = cont_limit
+        self.ques_limit = ques_limit
         self.embed_layer = Embedding(vocab_size, embed_size)
         conv_layers = []
         for i in range(2):
