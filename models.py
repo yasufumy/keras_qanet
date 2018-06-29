@@ -3,7 +3,7 @@ import tensorflow as tf
 from keras import backend as K
 from keras import Model
 from keras.layers import Input, LSTM, Dense, Embedding, Concatenate, Lambda, \
-    BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D
+    BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Add
 from keras.engine.topology import Layer
 
 from layers import MultiHeadAttention, PositionEmbedding, ContextQueryAttention
@@ -99,43 +99,46 @@ class SquadBaseline:
         return inference
 
 
+def conv_block(x, conv_layers):
+    n_conv = len(conv_layers)
+    x = Lambda(lambda x: tf.expand_dims(x, axis=2))(x)
+    for i in range(n_conv):
+        residual = x
+        x = BatchNormalization()(x)
+        x = conv_layers[i][0](x)
+        x = conv_layers[i][1](x)
+        x = Add()([x, residual])
+    x = Lambda(lambda x: tf.squeeze(x, axis=2))(x)
+    return x
+
+
+def attention_block(x, attention_layer, seq_len):
+    residual = x
+    x = BatchNormalization()(x)
+    key_and_value = attention_layer[0](x)
+    query = attention_layer[1](x)
+    x = attention_layer[2]([key_and_value, query, seq_len])
+    return Add()([x, residual])
+
+
+def ffn_block(x, ffn_layer):
+    residual = x
+    x = BatchNormalization()(x)
+    x = ffn_layer[0](x)
+    x = ffn_layer[1](x)
+    return Add()([x, residual])
+
+
 def encoder_block(x, conv_layers, attention_layer, ffn_layer, seq_len,
                   num_blocks, repeat=1):
-
-    def conv_block(x, conv_layers):
-        n_conv = len(conv_layers)
-        x = Lambda(lambda x: tf.expand_dims(x, axis=2))(x)
-        for i in range(n_conv):
-            residual = x
-            x = BatchNormalization()(x)
-            x = conv_layers[i](x)
-            x = x + residual
-        x = Lambda(lambda x: tf.squeeze(x, axis=2))(x)
-        return x
-
-    def attention_block(x, attention_layer, seq_len):
-        residual = x
-        x = BatchNormalization()(x)
-        key_and_value = attention_layer[0](x)
-        query = attention_layer[1](x)
-        x = attention_layer[2]([key_and_value, query, seq_len])
-        return x + residual
-
-    def ffn_block(self, x, ffn_layer):
-        residual = x
-        x = BatchNormalization()(x)
-        x = ffn_layer[0](x)
-        x = ffn_layer[1](x)
-        return x + residual
-
     outputs = [x]
-    for i in range(repeat):
+    for _ in range(repeat):
         x = outputs[-1]
         for j in range(num_blocks):
             x = PositionEmbedding()(x)
-            x = conv_block(x, conv_layers)
-            x = attention_block(x, attention_layer)
-            x = ffn_block(x, ffn_layer)
+            x = conv_block(x, conv_layers[j])
+            x = attention_block(x, attention_layer[j], seq_len)
+            x = ffn_block(x, ffn_layer[j])
         outputs.append(x)
     return outputs
 
@@ -156,18 +159,27 @@ class LightQANet:
         self.ques_limit = ques_limit
         self.embed_layer = Embedding(vocab_size, embed_size)
         conv_layers = []
-        for i in range(2):
-            conv_layers.append([
-                DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1),
-                Conv2D(filters, 1, padding='same')])
+        self_attention_layer = []
+        ffn_layer = []
+        for i in range(1):
+            conv_layers.append([])
+            for j in range(2):
+                conv_layers[i].append([
+                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1),
+                    Conv2D(filters, 1, padding='same')])
+            self_attention_layer.append([
+                Conv1D(2 * filters, 1),  # weights for key and value
+                Conv1D(filters, 1),  # weights for query
+                MultiHeadAttention(embed_size, 1)])
+            ffn_layer.append([Conv1D(filters, 1, activation='relu'),
+                              Conv1D(filters, 1, activation='linear')])
         self.conv_layers = conv_layers
-        self.self_attention_layer = [
-            Conv1D(2 * filters, 1),  # weights for key and value
-            Conv1D(filters, 1),  # weights for query
-            MultiHeadAttention()]
-        self.ffn_layer = [Conv1D(filters, 1, activation='relu'),
-                          Conv1D(filters, 1, activation='linear')]
-        self.cqattention_layer = ContextQueryAttention(512, cont_limit, ques_limit)
+        self.self_attention_layer = self_attention_layer
+        self.ffn_layer = ffn_layer
+
+        self.cqattention_layer = ContextQueryAttention(512, cont_limit, ques_limit, 0.)
+        self.adjust_layer = Conv1D(filters, 1, activation='linear')
+
         conv_layers = []
         self_attention_layer = []
         ffn_layer = []
@@ -175,12 +187,12 @@ class LightQANet:
             conv_layers.append([])
             for j in range(2):
                 conv_layers[i].append([
-                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1),
+                    DepthwiseConv2D((5, 1), padding='same', depth_multiplier=1),
                     Conv2D(filters, 1, padding='same')])
             self_attention_layer.append([
                 Conv1D(2 * filters, 1),
                 Conv1D(filters, 1),
-                MultiHeadAttention()])
+                MultiHeadAttention(embed_size, 1)])
             ffn_layer.append([Conv1D(filters, 1, activation='relu'),
                               Conv1D(filters, 1, activation='linear')])
         self.conv_layers2 = conv_layers
@@ -210,6 +222,7 @@ class LightQANet:
                                self.ffn_layer, ques_len, num_blocks=1, repeat=1)[1]
 
         x = self.cqattention_layer([x_cont, x_ques, cont_len, ques_len])
+        x = self.adjust_layer(x)
 
         outputs = encoder_block(x, self.conv_layers2, self.self_attention_layer2,
                                 self.ffn_layer2, cont_len, num_blocks=3, repeat=3)
@@ -226,4 +239,4 @@ class LightQANet:
         x_end = Lambda(lambda x: mask_logits(x[0], x[1], axis=0, time_dim=1))([x_end, cont_len])
         x_end = Lambda(lambda x: K.softmax(x))(x_end)
 
-        return Model(inputs=[cont_input, ques_input], outputs=[x_start, x_end])
+        return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end])
