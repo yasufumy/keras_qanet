@@ -30,9 +30,7 @@ def make_vocab(tokens, min_count, max_vocab_size,
 def load_squad_tokens(filename, tokenizer):
     with open(filename) as f:
         data = [row for row in csv.reader(f, delimiter='\t')]
-    print(data)
     data = [[tokenizer(x[0]), tokenizer(x[1])] for x in data]
-    print(data)
     contexts, questions = zip(*data)
     tokens = (token for tokens in contexts + questions for token in tokens)
     return tokens
@@ -132,7 +130,7 @@ class Iterator:
 
 
 class SquadConverter:
-    def __init__(self, token_to_index, unk_index, pad_token, categories, lower=True,
+    def __init__(self, token_to_index, pad_token, unk_token, lower=True,
                  question_max_len=50, context_max_len=400):
         spacy_en = spacy.load(
             'en_core_web_sm', disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
@@ -142,9 +140,8 @@ class SquadConverter:
 
         self._tokenizer = tokenizer
         self._token_to_index = token_to_index
-        self._unk_index = unk_index
         self._pad_token = pad_token
-        self._categories = categories
+        self._unk_index = token_to_index[unk_token]
         self._lower = str.lower if lower else lambda x: x
         self._question_max_len = question_max_len
         self._context_max_len = context_max_len
@@ -167,9 +164,7 @@ class SquadConverter:
     def _process_text(self, texts, max_length):
         texts = [[self._lower(token.text) for token in text] for text in texts]
         length = max(len(text) for text in texts)
-        if length < max_length:
-            max_length = length
-        else:
+        if length > max_length:
             texts = [text[:max_length] for text in texts]
         texts = [x + [self._pad_token] * (max_length - len(x)) for x in texts]
         return np.array([
