@@ -18,7 +18,7 @@ class PositionEmbedding(Layer):
                                             float(self.min_timescale)) / (tf.to_float(num_timescales) - 1)
         inv_timescales = self.min_timescale * tf.exp(tf.to_float(tf.range(num_timescales)) * -log_time_scale_increment)
         scaled_time = tf.expand_dims(position, 1) * tf.expand_dims(inv_timescales, 0)
-        signal = tf.concat([tf.sin(scaled_time), tf.icos(scaled_time)], axis=1)
+        signal = tf.concat([tf.sin(scaled_time), tf.cos(scaled_time)], axis=1)
         signal = tf.pad(signal, [[0, 0], [0, tf.mod(channels, 2)]])
         signal = tf.reshape(signal, [1, length, channels])
         return signal
@@ -64,7 +64,7 @@ class MultiHeadAttention(Layer):
         mask = K.cast(mask, tf.int32)
         mask = K.one_hot(mask[:, 0], shapes[-1])
         mask = 1 - K.cumsum(mask, 1)
-        mask = tf.cat(mask, tf.float32)
+        mask = tf.cast(mask, tf.float32)
         mask = tf.reshape(mask, [shapes[0], 1, 1, shapes[-1]])
         return inputs + mask_value * (1 - mask)
 
@@ -105,7 +105,7 @@ class MultiHeadAttention(Layer):
 
 
 class ContextQueryAttention(Layer):
-    def __init__(self, output_size, cont_limit, ques_limit, dropout, **kwargs):
+    def __init__(self, output_size, cont_limit, ques_limit, dropout=0.0, **kwargs):
         self.output_size = output_size
         self.cont_limit = cont_limit
         self.ques_limit = ques_limit
@@ -116,7 +116,7 @@ class ContextQueryAttention(Layer):
         if seq_len is None:
             return inputs
         else:
-            seq_len = K.cat(seq_len, tf.int32)
+            seq_len = K.cast(seq_len, tf.int32)
             mask = K.one_hot(seq_len[:, 0], K.shape(inputs)[time_dim])
             mask = 1 - K.cumsum(mask, 1)
             mask = K.expand_dims(mask, axis)
@@ -129,7 +129,7 @@ class ContextQueryAttention(Layer):
         x_cont, x_ques, cont_len, ques_len = inputs
         S = tf.matmul(x_cont, x_ques, transpose_b=True)
         S_bar = tf.nn.softmax(self.apply_mask(S, ques_len, axis=1, time_dim=2))
-        S_T = K.permute_dimensions(tf.nn.softmax(self.apply_mask(S, cont_len, axis=2, time_dim=1), dim=1), (0, 2, 1))
+        S_T = K.permute_dimensions(tf.nn.softmax(self.apply_mask(S, cont_len, axis=2, time_dim=1), axis=1), (0, 2, 1))
         c2q = tf.matmul(S_bar, x_ques)
         q2c = tf.matmul(tf.matmul(S_bar, S_T), x_cont)
         result = K.concatenate([x_cont, c2q, x_cont * c2q, x_cont * q2c], axis=-1)
