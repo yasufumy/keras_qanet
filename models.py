@@ -177,13 +177,13 @@ class LightQANet:
         self.self_attention_layer = self_attention_layer
         self.ffn_layer = ffn_layer
 
-        self.cqattention_layer = ContextQueryAttention(512, cont_limit, ques_limit, 0.)
+        self.cqattention_layer = ContextQueryAttention(filters * 4, cont_limit, ques_limit, 0.)
         self.adjust_layer = Conv1D(filters, 1, activation='linear')
 
         conv_layers = []
         self_attention_layer = []
         ffn_layer = []
-        for i in range(3):
+        for i in range(2):
             conv_layers.append([])
             for j in range(2):
                 conv_layers[i].append([
@@ -225,7 +225,7 @@ class LightQANet:
         x = self.adjust_layer(x)
 
         outputs = encoder_block(x, self.conv_layers2, self.self_attention_layer2,
-                                self.ffn_layer2, cont_len, num_blocks=3, repeat=3)
+                                self.ffn_layer2, cont_len, num_blocks=2, repeat=3)
 
         x_start = Concatenate()([outputs[1], outputs[2]])
         x_start = self.start_layer(x_start)

@@ -36,7 +36,7 @@ else:
 
 batch_size = args.batch # Batch size for training.
 epochs = args.epoch  # Number of epochs to train for.
-latent_dim = 128  # Latent dimensionality of the encoding space.
+latent_dim = 64  # Latent dimensionality of the encoding space.
 num_encoder_tokens = len(token_to_index)
 
 print('Number of unique input tokens:', num_encoder_tokens)
