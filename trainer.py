@@ -7,4 +7,5 @@ class SquadTrainer:
 
     def run(self):
         self.model.fit_generator(
-            generator=self.train_generator, epochs=self.epoch, validation_data=self.dev_generator)
+            generator=self.train_generator, epochs=self.epoch, validation_data=self.dev_generator,
+            steps_per_epoch=len(self.train_generator))
