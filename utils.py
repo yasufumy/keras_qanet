@@ -44,6 +44,31 @@ def evaluate(inference, test_generator, metric, start_id, keep_id, index_to_toke
     return metric.get_metric()
 
 
+def filter_dataset(filename, question_max_length=30, context_max_length=400):
+    import spacy
+    import csv
+    import os
+    from tqdm import tqdm
+
+    spacy_en = spacy.load('en_core_web_sm',
+                          disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
+    def tokenizer(x): return [token for token in spacy_en(x) if not token.is_space]
+
+    with open(filename) as f:
+        dataset = [row for row in csv.reader(f, delimiter='\t')]
+    basename, ext = os.path.splitext(filename)
+    filename = f'{basename}_filtered{ext}'
+    with open(filename, 'w') as f:
+        writer = csv.writer(f, delimiter='\t')
+        for data in tqdm(dataset):
+            context_tokens = tokenizer(data[0])
+            question_tokens = tokenizer(data[1])
+            if len(context_tokens) < context_max_length and \
+               len(question_tokens) < question_max_length:
+                writer.writerow(data)
+
+
+
 if __name__ == '__main__':
     import os
     import csv
