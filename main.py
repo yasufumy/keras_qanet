@@ -5,10 +5,10 @@ import spacy
 
 from models import LightQANet
 from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
-    load_squad_tokens
+    load_squad_tokens, SquadTestConverter
 from trainer import SquadTrainer
-# from metrics import SquadMetric
-# from utils import evaluate
+from metrics import SquadMetric
+from utils import evaluate
 
 parser = ArgumentParser()
 parser.add_argument('--epoch', default=100, type=int)
@@ -22,6 +22,7 @@ spacy_en = spacy.load('en_core_web_sm',
 
 def tokenizer(x): return [token.text.lower() for token in spacy_en(x) if not token.is_space]
 
+
 PAD_TOKEN = '<pad>'
 UNK_TOKEN = '<unk>'
 
@@ -34,7 +35,7 @@ if not os.path.exists('vocab.pkl'):
 else:
     token_to_index, index_to_token = Vocabulary.load('vocab.pkl')
 
-batch_size = args.batch # Batch size for training.
+batch_size = args.batch  # Batch size for training.
 epochs = args.epoch  # Number of epochs to train for.
 latent_dim = 64  # Latent dimensionality of the encoding space.
 num_encoder_tokens = len(token_to_index)
@@ -50,9 +51,9 @@ trainer = SquadTrainer(model, train_generator, epochs)
 trainer.run()
 model.save('s2s.h5')
 
-# metric = SquadMetric()
-# dataset = SquadReader('data/dev-v2.0.txt')
-# converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
-# dev_generator = Iterator(dataset, batch_size, converter, False, False)
-# em_score, f1_score = evaluate(inference, dev_generator, metric, 1, 2, index_to_token)
-# print('EM: {}, F1: {}'.format(em_score, f1_score))
+metric = SquadMetric()
+dataset = SquadReader('data/dev-v2.0.txt')
+converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
+dev_generator = Iterator(dataset, batch_size, converter, False, False)
+em_score, f1_score = evaluate(model, dev_generator, metric, 1, 2, index_to_token)
+print('EM: {}, F1: {}'.format(em_score, f1_score))
