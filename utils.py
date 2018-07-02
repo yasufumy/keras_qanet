@@ -1,3 +1,6 @@
+import tensorflow as tf
+
+
 def char_span_to_token_span(token_offsets, char_start, char_end):
     if char_start < 0:
         return (-1, -1), False
@@ -33,13 +36,21 @@ def get_spans(contexts, starts, ends):
     return spans
 
 
-def evaluate(inference, test_generator, metric, start_id, keep_id, index_to_token):
-    for question, context, answer in test_generator:
-        decoded_tokens = inference(question, context)
-        for i, token in enumerate(zip(*decoded_tokens)):
-            indices = [j for j, y in enumerate(token)
-                       if y == start_id or y == keep_id]
-            prediction = ' '.join(index_to_token[context[i][j]] for j in indices)
+def evaluate(model, test_generator, metric, start_id, keep_id, index_to_token):
+    for inputs, answer in test_generator:
+        start_scores, end_scores = model.predict(inputs)
+        scores = tf.matmul(tf.expand_dims(start_scores, axis=2),
+                           tf.expand_dims(end_scores, axis=1))
+        start_indices = tf.argmax(tf.reduce_max(scores, axis=2, keepdims=True), axis=1)
+        end_indices = tf.argmax(tf.reduce_max(scores, axis=1, keepdims=True), axis=2)
+
+        with tf.Session() as sess:
+            start_indices = sess.run(start_indices).reshape(-1)
+            end_indices = sess.run(end_indices).reshape(-1)
+
+        context = inputs[1]
+        for i, (start, end) in enumerate(zip(start_indices, end_indices)):
+            prediction = ' '.join(index_to_token[context[i][j]] for j in range(start, end))
             metric(prediction, answer[i])
     return metric.get_metric()
 
@@ -52,6 +63,7 @@ def filter_dataset(filename, question_max_length=30, context_max_length=400):
 
     spacy_en = spacy.load('en_core_web_sm',
                           disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
+
     def tokenizer(x): return [token for token in spacy_en(x) if not token.is_space]
 
     with open(filename) as f:
@@ -66,7 +78,6 @@ def filter_dataset(filename, question_max_length=30, context_max_length=400):
             if len(context_tokens) < context_max_length and \
                len(question_tokens) < question_max_length:
                 writer.writerow(data)
-
 
 
 if __name__ == '__main__':
