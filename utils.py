@@ -38,7 +38,7 @@ def get_spans(contexts, starts, ends):
 
 def evaluate(model, test_generator, metric, start_id, keep_id, index_to_token):
     for inputs, answer in test_generator:
-        start_scores, end_scores = model.predict(inputs)
+        start_scores, end_scores = model.predict_on_batch(inputs)
         scores = tf.matmul(tf.expand_dims(start_scores, axis=2),
                            tf.expand_dims(end_scores, axis=1))
         start_indices = tf.argmax(tf.reduce_max(scores, axis=2, keepdims=True), axis=1)
