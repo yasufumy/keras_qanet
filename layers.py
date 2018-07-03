@@ -7,16 +7,18 @@ from keras.engine.topology import Layer
 
 class PositionEmbedding(Layer):
     def __init__(self, min_timescale=1., max_timescale=1.e4, **kwargs):
-        self.min_timescale = min_timescale
-        self.max_timescale = max_timescale
+        self.min_timescale = float(min_timescale)
+        self.max_timescale = float(max_timescale)
         super().__init__(**kwargs)
 
     def get_timing_signal_1d(self, length, channels):
         position = tf.to_float(tf.range(length))
         num_timescales = channels // 2
-        log_time_scale_increment = math.log(float(self.max_timescale) /
-                                            float(self.min_timescale)) / (tf.to_float(num_timescales) - 1)
-        inv_timescales = self.min_timescale * tf.exp(tf.to_float(tf.range(num_timescales)) * -log_time_scale_increment)
+        log_timescale_increment = \
+            math.log(self.max_timescale / self.min_timescale) / \
+            (tf.to_float(num_timescales) - 1)
+        inv_timescales = self.min_timescale * \
+            tf.exp(tf.to_float(tf.range(num_timescales)) * -log_timescale_increment)
         scaled_time = tf.expand_dims(position, 1) * tf.expand_dims(inv_timescales, 0)
         signal = tf.concat([tf.sin(scaled_time), tf.cos(scaled_time)], axis=1)
         signal = tf.pad(signal, [[0, 0], [0, tf.mod(channels, 2)]])
@@ -24,8 +26,8 @@ class PositionEmbedding(Layer):
         return signal
 
     def add_timing_signal_1d(self, x):
-        length = tf.shape(x)[1]
-        channels = tf.shape(x)[2]
+        length = tf.shape(x)[1]  # sequence length
+        channels = tf.shape(x)[2]  # hidden dimension for each word
         signal = self.get_timing_signal_1d(length, channels)
         return x + signal
 
@@ -52,11 +54,14 @@ class MultiHeadAttention(Layer):
         super().build(input_shape)
 
     def split_last_dim(self, x, n):
-        old_shape = x.get_shape().dims
-        last = old_shape[-1]
+        old_shape = x.get_shape().dims  # batch_size * seq_len * hidden_size
+        last = old_shape[-1]  # last shape should be hidden dimension
+        # batch_size * seq_len * heads * hidden_size // heads
         new_shape = old_shape[:-1] + [n] + [last // n if last else None]
+        # reshape batch_size * seq_len * heads * hidden_size // heads
         ret = tf.reshape(x, tf.concat([tf.shape(x)[:-1], [n, -1]], 0))
         ret.set_shape(new_shape)
+        # reshape batch_size * heads * seq_len * hidden_size // heads
         return tf.transpose(ret, [0, 2, 1, 3])
 
     def mask_logits(self, inputs, mask, mask_value=tf.float32.min):
