@@ -52,7 +52,7 @@ trainer.run()
 model.save('s2s.h5')
 
 metric = SquadMetric()
-dataset = SquadReader('data/dev-v2.0.txt')
+dataset = SquadReader('data/dev-v1.1_filtered.txt')
 converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
 dev_generator = Iterator(dataset, batch_size, converter, False, False)
 em_score, f1_score = evaluate(model, dev_generator, metric, 1, 2, index_to_token)
