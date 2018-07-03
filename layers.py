@@ -54,11 +54,14 @@ class MultiHeadAttention(Layer):
         super().build(input_shape)
 
     def split_last_dim(self, x, n):
-        old_shape = x.get_shape().dims
-        last = old_shape[-1]
+        old_shape = x.get_shape().dims  # batch_size * seq_len * hidden_size
+        last = old_shape[-1]  # last shape should be hidden dimension
+        # batch_size * seq_len * heads * hidden_size // heads
         new_shape = old_shape[:-1] + [n] + [last // n if last else None]
+        # reshape batch_size * seq_len * heads * hidden_size // heads
         ret = tf.reshape(x, tf.concat([tf.shape(x)[:-1], [n, -1]], 0))
         ret.set_shape(new_shape)
+        # reshape batch_size * heads * seq_len * hidden_size // heads
         return tf.transpose(ret, [0, 2, 1, 3])
 
     def mask_logits(self, inputs, mask, mask_value=tf.float32.min):
