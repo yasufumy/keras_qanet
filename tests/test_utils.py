@@ -1,5 +1,5 @@
 from unittest import TestCase
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 from utils import char_span_to_token_span, get_spans, evaluate
 
 
@@ -29,16 +29,18 @@ class TestUitls(TestCase):
         import numpy as np
 
         metric = SquadMetric()
-        inference = MagicMock()
-        inference.return_value = [[0], [1], [2], [0], [0]]
+        model = Mock()
+        start_prob = np.array([[0, 1, 0, 0, 0]], dtype=np.float32)
+        end_prob = np.array([[0, 0, 1, 0, 0]], dtype=np.float32)
+        model.configure_mock(**{'predict_on_batch.return_value': [start_prob, end_prob]})
         test_generator = MagicMock()
         context = np.array([[1, 2, 3, 4, 5]])
         question = np.array([[6, 7, 8]])
         answer = ['world cup']
-        test_generator.__iter__.return_value = iter([[question, context, answer]])
+        test_generator.__iter__.return_value = iter([[[question, context], answer]])
         index_to_token = {2: 'world', 3: 'cup'}
 
-        em_score, f1_score = evaluate(inference, test_generator, metric, 1, 2, index_to_token)
+        em_score, f1_score = evaluate(model, test_generator, metric, 1, 2, index_to_token)
         self.assertEqual(em_score, 1.)
         self.assertEqual(f1_score, 1.)
-        inference.assert_called_with(question, context)
+        model.predict_on_batch.assert_called_with([question, context])
