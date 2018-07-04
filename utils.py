@@ -50,7 +50,7 @@ def evaluate(model, test_generator, metric, start_id, keep_id, index_to_token):
 
         context = inputs[1]
         for i, (start, end) in enumerate(zip(start_indices, end_indices)):
-            prediction = ' '.join(index_to_token[context[i][j]] for j in range(start, end))
+            prediction = ' '.join(index_to_token[context[i][j]] for j in range(start, end + 1))
             metric(prediction, answer[i])
     return metric.get_metric()
 
