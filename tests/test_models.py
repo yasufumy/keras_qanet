@@ -1,22 +1,21 @@
 from unittest import TestCase
 
-import numpy as np
+from keras import backend as K
+from models import LightQANet
 
-from models import SquadBaseline
 
-
-class TestSquadBaseline(TestCase):
+class TestLightQANet(TestCase):
     def test_build(self):
-        model, inference = SquadBaseline(vocab_size=30000,
-                                         embed_size=256,
-                                         hidden_size=128,
-                                         categories=3).build()
-        question = np.array([[1, 2, 3, 4, 5, 0, 0, 0],
-                             [1, 2, 3, 4, 5, 6, 7, 8]])
-        context = np.array([[1, 2, 3, 4, 5, 6],
-                            [1, 2, 0, 0, 0, 0]])
+        vocab_size = 3000
+        embed_size = filters = 32
+        context_limit = 40
+        query_limit = 5
+        model = LightQANet(
+            vocab_size, embed_size, filters, context_limit, query_limit).build()
+        query_input, context_input = model.inputs
+        start_prob, end_prob = model.outputs
 
-        decode_tokens = inference(question, context)
-
-        self.assertEqual(len(decode_tokens), context.shape[1])
-        self.assertEqual(len(decode_tokens[0]), context.shape[0])
+        self.assertTupleEqual(K.int_shape(query_input), (None, query_limit))
+        self.assertTupleEqual(K.int_shape(context_input), (None, context_limit))
+        self.assertTupleEqual(K.int_shape(start_prob), (None, context_limit))
+        self.assertTupleEqual(K.int_shape(end_prob), (None, context_limit))
