@@ -1,6 +1,6 @@
 from unittest import TestCase
-from unittest.mock import MagicMock, Mock
-from utils import char_span_to_token_span, get_spans, evaluate
+from unittest.mock import MagicMock, Mock, patch, mock_open, call
+from utils import char_span_to_token_span, get_spans, evaluate, filter_dataset
 
 
 class TestUitls(TestCase):
@@ -44,3 +44,16 @@ class TestUitls(TestCase):
         self.assertEqual(em_score, 1.)
         self.assertEqual(f1_score, 1.)
         model.predict_on_batch.assert_called_with([question, context])
+
+    def test_filter_dataset(self):
+        filename = '/path/to/dataset.tsv'
+        dest_path = '/path/to/dataset_filtered.tsv'
+        read_data = 'Rock n Roll is a risk. You rick being ridiculed.\tDo you like rock music?\n' \
+            'Rock n Roll is a risk.\tDo you like rock?'
+        open_ = patch('utils.open', mock_open(read_data=read_data)).start()
+        open_.return_value.__iter__.return_value = read_data.split('\n')
+        writer = patch('csv.writer').start()
+        filter_dataset(filename, 5, 7)
+        open_.assert_has_calls([call(filename), call(dest_path, 'w')], any_order=True)
+        writer.assert_called_once_with(open_.return_value, delimiter='\t')
+        writer.return_value.writerow.assert_called_once_with(read_data.split('\n')[1].split('\t'))
