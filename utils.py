@@ -50,7 +50,7 @@ def evaluate(model, test_generator, metric, start_id, keep_id, index_to_token):
 
         context = inputs[1]
         for i, (start, end) in enumerate(zip(start_indices, end_indices)):
-            prediction = ' '.join(index_to_token[context[i][j]] for j in range(start, end))
+            prediction = ' '.join(index_to_token[context[i][j]] for j in range(start, end + 1))
             metric(prediction, answer[i])
     return metric.get_metric()
 
@@ -75,8 +75,8 @@ def filter_dataset(filename, question_max_length=30, context_max_length=400):
         for data in tqdm(dataset):
             context_tokens = tokenizer(data[0])
             question_tokens = tokenizer(data[1])
-            if len(context_tokens) < context_max_length and \
-               len(question_tokens) < question_max_length:
+            if len(context_tokens) <= context_max_length and \
+               len(question_tokens) <= question_max_length:
                 writer.writerow(data)
 
 
