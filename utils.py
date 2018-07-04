@@ -75,8 +75,8 @@ def filter_dataset(filename, question_max_length=30, context_max_length=400):
         for data in tqdm(dataset):
             context_tokens = tokenizer(data[0])
             question_tokens = tokenizer(data[1])
-            if len(context_tokens) < context_max_length and \
-               len(question_tokens) < question_max_length:
+            if len(context_tokens) <= context_max_length and \
+               len(question_tokens) <= question_max_length:
                 writer.writerow(data)
 
 
