@@ -1,5 +1,7 @@
 from unittest.mock import patch, mock_open
 from unittest import TestCase
+
+import numpy as np
 from data import make_vocab, load_squad_tokens, SquadReader, Iterator,\
     SquadConverter, SquadTestConverter, Vocabulary
 
@@ -145,51 +147,44 @@ class TestSquadConverter(TestCase):
                       'your': 10}
 
     def setUp(self):
-        self.converter = SquadConverter(self.token_to_index, 1, '<pad>', 3)
+        self.converter = SquadConverter(
+            self.token_to_index, '<pad>', '<unk>', True, 5, 12)
 
     def test_init(self):
         self.assertEqual(self.converter._unk_index, 1)
         self.assertEqual(self.converter._pad_token, '<pad>')
-        self.assertEqual(self.converter._categories, 3)
         self.assertEqual(self.converter._token_to_index, self.token_to_index)
 
     def test_call(self):
-        import numpy as np
-
-        inputs, output = self.converter(self.batch)
+        inputs, outputs = self.converter(self.batch)
         question = np.array([[9, 2, 10, 4, 1]], dtype=np.int32)
         context = np.array([[1, 1, 1, 2, 3, 4, 5, 6, 4, 7, 8, 5]], dtype=np.int32)
-        input_span = np.zeros(context.shape + (3,))
-        input_span[0, :11, 0] = 1.
-        input_span[0, 11, 1] = 1.
-        output_span = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]],
-                               dtype=np.int32)[:, :, None]
-        self.assertEqual(len(inputs), 3)
+        start_index = np.array([10], dtype=np.int32)
+        end_index = np.array([10], dtype=np.int32)
+        self.assertEqual(len(inputs), 2)
+        self.assertEqual(len(outputs), 2)
         np.testing.assert_array_equal(inputs[0], question)
         np.testing.assert_array_equal(inputs[1], context)
-        np.testing.assert_array_equal(inputs[2], input_span)
-        np.testing.assert_array_equal(output, output_span)
+        np.testing.assert_array_equal(outputs[0], start_index)
+        np.testing.assert_array_equal(outputs[1], end_index)
 
     def test_process_text(self):
-        import numpy as np
-
         contexts = [self.converter._tokenizer(self.batch[0][0])]
-        batch = self.converter._process_text(contexts)
+        batch = self.converter._process_text(contexts, 12)
         context = np.array([[1, 1, 1, 2, 3, 4, 5, 6, 4, 7, 8, 5]], dtype=np.int32)
         np.testing.assert_array_equal(batch, context)
 
 
 class TestSquadTestConverter(TestSquadConverter):
     def setUp(self):
-        self.converter = SquadTestConverter(self.token_to_index, 1, '<pad>', 3)
+        self.converter = SquadTestConverter(
+            self.token_to_index, '<pad>', '<unk>', True, 5, 12)
 
     def test_call(self):
-        import numpy as np
-
-        batch = self.converter(self.batch)
+        inputs, output = self.converter(self.batch)
         question = np.array([[9, 2, 10, 4, 1]], dtype=np.int32)
         context = np.array([[1, 1, 1, 2, 3, 4, 5, 6, 4, 7, 8, 5]], dtype=np.int32)
-        self.assertEqual(len(batch), 3)
-        np.testing.assert_array_equal(batch[0], question)
-        np.testing.assert_array_equal(batch[1], context)
-        self.assertEqual(batch[2], ('ridiculed',))
+        self.assertEqual(len(inputs), 2)
+        np.testing.assert_array_equal(inputs[0], question)
+        np.testing.assert_array_equal(inputs[1], context)
+        self.assertEqual(output, ('ridiculed',))
