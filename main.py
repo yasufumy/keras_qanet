@@ -13,6 +13,9 @@ from utils import evaluate
 parser = ArgumentParser()
 parser.add_argument('--epoch', default=100, type=int)
 parser.add_argument('--batch', default=64, type=int)
+parser.add_argument('--dev-batch', default=64, type=int)
+parser.add_argument('--train-path', default='./data/train-v1.1_filtered.txt', type=str)
+parser.add_argument('--dev-path', default='./data/dev-v1.1_filtered.txt', type=str)
 args = parser.parse_args()
 
 
@@ -28,7 +31,7 @@ UNK_TOKEN = '<unk>'
 
 
 if not os.path.exists('vocab.pkl'):
-    squad_tokens = load_squad_tokens('./data/train-v1.1_filtered.txt', tokenizer)
+    squad_tokens = load_squad_tokens(args.train_path, tokenizer)
     token_to_index, index_to_token = Vocabulary.build(
         squad_tokens, 5, 3000, (PAD_TOKEN, UNK_TOKEN), 'vocab.pkl')
 
@@ -44,7 +47,7 @@ print('Number of unique input tokens:', num_encoder_tokens)
 
 model = LightQANet(len(token_to_index), latent_dim, latent_dim).build()
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-dataset = SquadReader('./data/train-v1.1_filtered.txt')
+dataset = SquadReader(args.train_path)
 converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
 train_generator = Iterator(dataset, batch_size, converter)
 trainer = SquadTrainer(model, train_generator, epochs)
@@ -52,8 +55,8 @@ trainer.run()
 model.save('s2s.h5')
 
 metric = SquadMetric()
-dataset = SquadReader('data/dev-v1.1_filtered.txt')
+dataset = SquadReader(args.dev_path)
 converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
-dev_generator = Iterator(dataset, batch_size, converter, False, False)
+dev_generator = Iterator(dataset, args.dev_batch, converter, False, False)
 em_score, f1_score = evaluate(model, dev_generator, metric, 1, 2, index_to_token)
 print('EM: {}, F1: {}'.format(em_score, f1_score))
