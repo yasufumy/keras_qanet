@@ -2,6 +2,7 @@ import os
 from argparse import ArgumentParser
 
 import spacy
+from keras.optimizers import Adam
 
 from models import LightQANet
 from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
@@ -46,7 +47,10 @@ num_encoder_tokens = len(token_to_index)
 print('Number of unique input tokens:', num_encoder_tokens)
 
 model = LightQANet(len(token_to_index), latent_dim, latent_dim).build()
-model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
+opt = Adam(lr=0.001, beta_1=0.8, beta_2=0.999, epsilon=1e-7, clipnorm=5.)
+model.compile(optimizer=opt,
+              loss=['sparse_categorical_crossentropy',
+                    'sparse_categorical_crossentropy'], loss_weights=[1, 1])
 dataset = SquadReader(args.train_path)
 converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
 train_generator = Iterator(dataset, batch_size, converter)
