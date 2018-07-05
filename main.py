@@ -60,7 +60,7 @@ model.save('s2s.h5')
 
 metric = SquadMetric()
 dataset = SquadReader(args.dev_path)
-converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
+converter = SquadTestConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
 dev_generator = Iterator(dataset, args.dev_batch, converter, False, False)
 em_score, f1_score = evaluate(model, dev_generator, metric, 1, 2, index_to_token)
 print('EM: {}, F1: {}'.format(em_score, f1_score))
