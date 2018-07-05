@@ -21,4 +21,5 @@ class TestSquadTrainer(TestCase):
 
         trainer.run()
         self.mock_model.fit_generator.assert_called_with(
-            generator=self.mock_generator, epochs=epoch, validation_data=None)
+            generator=self.mock_generator, epochs=epoch, validation_data=None,
+            steps_per_epoch=len(self.mock_generator))
