@@ -61,7 +61,7 @@ def evaluate(model, test_generator, metric, start_id, keep_id, index_to_token):
     return metric.get_metric()
 
 
-def filter_dataset(filename, question_max_length=30, context_max_length=400):
+def filter_dataset(filename, question_max_length=50, context_max_length=400):
     import spacy
     import csv
     import os
