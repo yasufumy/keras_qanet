@@ -1,3 +1,9 @@
+import os
+import csv
+import random
+import linecache
+
+from tqdm import tqdm
 import tensorflow as tf
 
 
@@ -78,6 +84,25 @@ def filter_dataset(filename, question_max_length=30, context_max_length=400):
             if len(context_tokens) <= context_max_length and \
                len(question_tokens) <= question_max_length:
                 writer.writerow(data)
+
+
+def make_small_dataset(filename, size=100, overwrite=False):
+    basename, ext = os.path.splitext(filename)
+    new_filename = f'{basename}_size_{size}{ext}'
+
+    if os.path.exists(new_filename) and not overwrite:
+        raise FileExistsError('Target file already exists, set overwrite as True')
+
+    with open(filename) as f:
+        num_lines = len(f.readlines()) - 1
+
+    indices = random.sample(range(num_lines), size)
+    with open(new_filename, 'w') as f:
+        writer = csv.writer(f, delimiter='\t')
+        for i in tqdm(indices):
+            line = linecache.getline(filename, i + 1)
+            data = next(csv.reader([line], delimiter='\t'))
+            writer.writerow(data)
 
 
 if __name__ == '__main__':
