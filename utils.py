@@ -106,8 +106,6 @@ def make_small_dataset(filename, size=100, overwrite=False):
 
 
 if __name__ == '__main__':
-    import os
-    import csv
     import pickle
     from allennlp.data.dataset_readers import SquadReader
 
