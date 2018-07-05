@@ -56,7 +56,7 @@ class SquadReader:
     def __init__(self, filename):
         self._filename = filename
         with open(filename) as f:
-            self._total_data = len(f.readlines()) - 1
+            self._total_data = len(f.readlines())
 
     def __getitem__(self, i):
         if isinstance(i, slice):
