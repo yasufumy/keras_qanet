@@ -42,11 +42,12 @@ def get_spans(contexts, starts, ends):
     return spans
 
 
-def evaluate(model, test_generator, metric, start_id, keep_id, index_to_token):
+def evaluate(model, test_generator, metric, index_to_token, answer_limit=30):
     for inputs, answer in test_generator:
         start_scores, end_scores = model.predict_on_batch(inputs)
         scores = tf.matmul(tf.expand_dims(start_scores, axis=2),
                            tf.expand_dims(end_scores, axis=1))
+        scores = tf.matrix_band_part(scores, 0, answer_limit)
         start_indices = tf.argmax(tf.reduce_max(scores, axis=2, keepdims=True), axis=1)
         end_indices = tf.argmax(tf.reduce_max(scores, axis=1, keepdims=True), axis=2)
 
