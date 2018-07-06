@@ -41,7 +41,7 @@ class TestUitls(TestCase):
         test_generator.__iter__.return_value = iter([[[question, context], answer]])
         index_to_token = {2: 'world', 3: 'cup'}
 
-        em_score, f1_score = evaluate(model, test_generator, metric, 1, 2, index_to_token)
+        em_score, f1_score = evaluate(model, test_generator, metric, index_to_token, 3)
         self.assertEqual(em_score, 1.)
         self.assertEqual(f1_score, 1.)
         model.predict_on_batch.assert_called_with([question, context])
