@@ -17,27 +17,28 @@ parser.add_argument('--batch', default=64, type=int)
 parser.add_argument('--dev-batch', default=64, type=int)
 parser.add_argument('--train-path', default='./data/train-v1.1_filtered.txt', type=str)
 parser.add_argument('--dev-path', default='./data/dev-v1.1_filtered.txt', type=str)
+parser.add_argument('--min-freq', default=5, type=int)
+parser.add_argument('--max-size', default=30000, type=int)
+parser.add_argument('--vocab-file', default='vocab.pkl', type=str)
 args = parser.parse_args()
-
-
-spacy_en = spacy.load('en_core_web_sm',
-                      disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
-
-
-def tokenizer(x): return [token.text.lower() for token in spacy_en(x) if not token.is_space]
 
 
 PAD_TOKEN = '<pad>'
 UNK_TOKEN = '<unk>'
 
+if not os.path.exists(args.vocab_file):
+    spacy_en = spacy.load('en_core_web_sm',
+                          disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
 
-if not os.path.exists('vocab.pkl'):
+    def tokenizer(x): return [token.text.lower() for token in spacy_en(x) if not token.is_space]
+
     squad_tokens = load_squad_tokens(args.train_path, tokenizer)
     token_to_index, index_to_token = Vocabulary.build(
-        squad_tokens, 5, 3000, (PAD_TOKEN, UNK_TOKEN), 'vocab.pkl')
+        squad_tokens, args.min_freq, args.max_size, (PAD_TOKEN, UNK_TOKEN),
+        args.vocab_file)
 
 else:
-    token_to_index, index_to_token = Vocabulary.load('vocab.pkl')
+    token_to_index, index_to_token = Vocabulary.load(args.vocab_file)
 
 batch_size = args.batch  # Batch size for training.
 epochs = args.epoch  # Number of epochs to train for.
@@ -62,5 +63,5 @@ metric = SquadMetric()
 dataset = SquadReader(args.dev_path)
 converter = SquadTestConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
 dev_generator = Iterator(dataset, args.dev_batch, converter, False, False)
-em_score, f1_score = evaluate(model, dev_generator, metric, 1, 2, index_to_token)
+em_score, f1_score = evaluate(model, dev_generator, metric, index_to_token)
 print('EM: {}, F1: {}'.format(em_score, f1_score))
