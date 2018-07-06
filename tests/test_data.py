@@ -66,10 +66,10 @@ class TestSquadReader(TestCase):
 
     def test_init(self):
         self.assertEqual(self.dataset._filename, self.filename)
-        self.assertEqual(self.dataset._total_data, 1)
+        self.assertEqual(self.dataset._total_data, 2)
 
     def test_len(self):
-        self.assertEqual(len(self.dataset), 1)
+        self.assertEqual(len(self.dataset), 2)
 
     def test_getitem(self):
         for i, line in enumerate(self.lines):

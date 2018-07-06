@@ -139,12 +139,12 @@ class LightQANet:
         x_start = self.start_layer(x_start)
         x_start = Lambda(lambda x: tf.squeeze(x, axis=-1))(x_start)
         x_start = Lambda(lambda x: mask_logits(x[0], x[1], axis=0, time_dim=1))([x_start, cont_len])
-        x_start = Lambda(lambda x: K.softmax(x))(x_start)
+        x_start = Lambda(lambda x: K.softmax(x), name='start')(x_start)
 
         x_end = Concatenate()([outputs[1], outputs[3]])
-        x_end = self.start_layer(x_end)  # batch * seq_len * 1
+        x_end = self.end_layer(x_end)  # batch * seq_len * 1
         x_end = Lambda(lambda x: tf.squeeze(x, axis=-1))(x_end)
         x_end = Lambda(lambda x: mask_logits(x[0], x[1], axis=0, time_dim=1))([x_end, cont_len])
-        x_end = Lambda(lambda x: K.softmax(x))(x_end)  # batch * seq_len
+        x_end = Lambda(lambda x: K.softmax(x), name='end')(x_end)  # batch * seq_len
 
         return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end])
