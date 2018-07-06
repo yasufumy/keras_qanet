@@ -177,6 +177,13 @@ class SquadTestConverter(SquadConverter):
         contexts, questions, _, _, answers = zip(*batch)
         contexts = [self._tokenizer(context) for context in contexts]
         questions = [self._tokenizer(question) for question in questions]
+        answers = self._get_valid_tokenized_answers(answers)
         context_batch = self._process_text(contexts, self._context_max_len)
         question_batch = self._process_text(questions, self._question_max_len)
         return [question_batch, context_batch], answers
+
+    def _get_valid_tokenized_answers(self, answers):
+        return [
+            ' '.join([token.text for token in self._tokenizer(answer)])
+            for answer in answers
+        ]

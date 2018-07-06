@@ -187,4 +187,10 @@ class TestSquadTestConverter(TestSquadConverter):
         self.assertEqual(len(inputs), 2)
         np.testing.assert_array_equal(inputs[0], question)
         np.testing.assert_array_equal(inputs[1], context)
-        self.assertEqual(output, ('ridiculed',))
+        self.assertEqual(output, ['ridiculed'])
+
+    def test_get_valid_tokenized_answers(self):
+        answer = 'well-done'
+        valid_answer = 'well - done'
+        result = self.converter._get_valid_tokenized_answers([answer])
+        self.assertListEqual(result, [valid_answer])
