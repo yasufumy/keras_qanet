@@ -1,6 +1,6 @@
-# Baselines for SQuAD
+# Light QANet for SQuAD
 
-This is baseline models for SQuAD. All models are implemented by Keras.
+This is a lighter QANet for SQuAD. All models are implemented by Keras.
 
 ## Description
 
@@ -21,35 +21,46 @@ import os
 from data import Vocabulary, load_squad_tokens
 import spacy
 
-spacy_en = spacy.load('en_core_web_sm',
-                      disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
 
-def tokenizer(x): return [token.text.lower() for token in spacy_en(x) if not token.is_space]
+vocab_file= 'vocab.pkl'
 
-if not os.path.exists('vocab.pkl'):
-    squad_tokens = load_squad_tokens('/path/to/train.txt')
+PAD_TOKEN = '<pad>'
+UNK_TOKEN = '<unk>'
+min_freq = 5
+max_size = 30000
+
+if not os.path.exists(vocab_file):
+    spacy_en = spacy.load('en_core_web_sm',
+                          disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
+
+    def tokenizer(x): return [token.text.lower() for token in spacy_en(x) if not token.is_space]
+
+    train_file = '/path/to/train.txt'
+    squad_tokens = load_squad_tokens(train_file)
     token_to_index, index_to_token = Vocabulary.build(
-        squad_tokens, 5, 30000, ('<pad>', '<unk>'), 'vocab.pkl')
+        squad_tokens, min_freq, max_size, (PAD_TOKEN, UNK_TOKEN), vocab_file)
 else:
-    token_to_index, index_to_token = Vocabulary.load('vocab.pkl')
+    token_to_index, index_to_token = Vocabulary.load(vocab_file)
 
 ```
 
 Training model
 
 ```py
-from models import SquadBaseline
+from models import LightQANet
 from data SquadReader, Iterator, SquadConverter
 from trainer SquadTrainer
 
-vocab_size = len(token_to_index)
+vocab_size = 30000
 hidden_size = embed_size = 128
 batch_size = 256
 
-model, inference = SquadBaseline(vocab_size, embed_size, hidden_size).build()
+train_file = '/path/to/train.txt'
+
+model = LightQANet(vocab_size, embed_size, hidden_size).build()
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-dataset = SquadReader('/path/to/train.txt')
-converter = SquadConverter(token_to_index, 1, '<pad>', 3)
+dataset = SquadReader(train_file)
+converter = SquadConverter(token_to_index, '<pad>', '<unk>')
 train_generator = Iterator(dataset, batch_size, converter)
 trainer = SquadTrainer(model, trainer_generator, epochs)
 trainer.run()
@@ -58,11 +69,15 @@ trainer.run()
 Iterating dataset
 
 ```py
-from data import SquadReader, SquadIterator, SquadConverter
+from data import SquadReader, Iterator, SquadConverter
 
-dataset = SquadReader('/path/to/train.tsv')
-converter = SquadConverter(token_to_index, 1, '<pad>', 3)
-train_generator = SquadIterator(dataset, batch_size, converter)
+train_file = '/path/to/train.tsv'
+PAD_TOKEN = '<pad>'
+UNK_TOKEN = '<unk>'
+
+dataset = SquadReader(train_file)
+converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
+train_generator = Iterator(dataset, batch_size, converter)
 ```
 
 Evaluation
@@ -72,11 +87,16 @@ from utils import evaluate
 from metrics import SquadMetric
 from data SquadReader, SquadTestConverter, Iterator
 
+
+test_file = '/path/to/test.txt'
+PAD_TOKEN = '<pad>'
+UNK_TOKEN = '<unk>'
+
 metric = SquadMetric()
-dataset = SquadReader('/path/to/test.txt')
-converter = SquadTestConverter(token_to_index, 1, '<pad>', 3)
-test_generator = Iterator(dataset, batch_size, converter, False, False)
-em_score, f1_score = evalute(inference, test_generator, metric, 1, 2, index_to_token)
+dataset = SquadReader(test_file)
+converter = SquadTestConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
+test_generator = Iterator(dataset, batch_size, converter, repeat=False, shuffle=False)
+em_score, f1_score = evalute(model, test_generator, metric, index_to_token)
 ```
 
 ## Install
