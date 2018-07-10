@@ -10,7 +10,7 @@ from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
     load_squad_tokens, SquadTestConverter
 from trainer import SquadTrainer
 from metrics import SquadMetric
-from utils import evaluate
+from utils import evaluate, dump_graph
 
 parser = ArgumentParser()
 parser.add_argument('--epoch', default=100, type=int)
@@ -60,7 +60,8 @@ trainer = SquadTrainer(model, train_generator, epochs, dev_generator,
                        'lightqanet.h5')
 if args.use_tensorboard:
     trainer.add_callback(TensorBoard(log_dir='./graph', batch_size=batch_size))
-trainer.run()
+history = trainer.run()
+dump_graph(history, 'loss_graph.png')
 
 metric = SquadMetric()
 test_dataset = SquadReader(args.test_path)
