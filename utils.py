@@ -5,6 +5,7 @@ import linecache
 
 from tqdm import tqdm
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 
 def char_span_to_token_span(token_offsets, char_start, char_end):
@@ -40,6 +41,16 @@ def get_spans(contexts, starts, ends):
         spans.append(span)
 
     return spans
+
+
+def dump_graph(history, filename):
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('cross entropy loss')
+    plt.xlabel('epoch')
+    plt.ylabel('loss')
+    plt.legend(['loss', 'val_loss'], loc='upper right')
+    plt.savefig(filename)
 
 
 def evaluate(model, test_generator, metric, index_to_token, answer_limit=30):
