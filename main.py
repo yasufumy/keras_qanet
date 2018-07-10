@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 
 import spacy
 from keras.optimizers import Adam
+from keras.callbacks import TensorBoard
 
 from models import LightQANet
 from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
@@ -14,12 +15,13 @@ from utils import evaluate
 parser = ArgumentParser()
 parser.add_argument('--epoch', default=100, type=int)
 parser.add_argument('--batch', default=64, type=int)
-parser.add_argument('--dev-batch', default=64, type=int)
-parser.add_argument('--train-path', default='./data/train-v1.1_filtered.txt', type=str)
-parser.add_argument('--dev-path', default='./data/dev-v1.1_filtered.txt', type=str)
+parser.add_argument('--train-path', default='./data/train-v1.1_filtered_train.txt', type=str)
+parser.add_argument('--dev-path', default='./data/train-v1.1_filtered_dev.txt', type=str)
+parser.add_argument('--test-path', default='./data/dev-v1.1_filtered.txt', type=str)
 parser.add_argument('--min-freq', default=5, type=int)
 parser.add_argument('--max-size', default=30000, type=int)
 parser.add_argument('--vocab-file', default='vocab.pkl', type=str)
+parser.add_argument('--use-tensorboard', default=False, type=bool)
 args = parser.parse_args()
 
 
@@ -43,25 +45,26 @@ else:
 batch_size = args.batch  # Batch size for training.
 epochs = args.epoch  # Number of epochs to train for.
 latent_dim = 64  # Latent dimensionality of the encoding space.
-num_encoder_tokens = len(token_to_index)
-
-print('Number of unique input tokens:', num_encoder_tokens)
 
 model = LightQANet(len(token_to_index), latent_dim, latent_dim).build()
 opt = Adam(lr=0.001, beta_1=0.8, beta_2=0.999, epsilon=1e-7, clipnorm=5.)
 model.compile(optimizer=opt,
               loss=['sparse_categorical_crossentropy',
                     'sparse_categorical_crossentropy'], loss_weights=[1, 1])
-dataset = SquadReader(args.train_path)
+train_dataset = SquadReader(args.train_path)
+dev_dataset = SquadReader(args.dev_path)
 converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
-train_generator = Iterator(dataset, batch_size, converter)
-trainer = SquadTrainer(model, train_generator, epochs)
+train_generator = Iterator(train_dataset, batch_size, converter)
+dev_generator = Iterator(dev_dataset, batch_size, converter)
+trainer = SquadTrainer(model, train_generator, epochs, dev_generator,
+                       'lightqanet.h5')
+if args.use_tensorboard:
+    trainer.add_callback(TensorBoard(log_dir='./graph', batch_size=batch_size))
 trainer.run()
-model.save('s2s.h5')
 
 metric = SquadMetric()
-dataset = SquadReader(args.dev_path)
+test_dataset = SquadReader(args.test_path)
 converter = SquadTestConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
-dev_generator = Iterator(dataset, args.dev_batch, converter, False, False)
-em_score, f1_score = evaluate(model, dev_generator, metric, index_to_token)
+test_generator = Iterator(test_dataset, args.batch, converter, False, False)
+em_score, f1_score = evaluate(model, test_generator, metric, index_to_token)
 print('EM: {}, F1: {}'.format(em_score, f1_score))
