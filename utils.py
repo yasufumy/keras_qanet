@@ -106,6 +106,37 @@ def make_small_dataset(filename, size=100, overwrite=False):
             writer.writerow(data)
 
 
+def split_dataset(filename, ratio=0.8, overwrite=False):
+    basename, ext = os.path.splitext(filename)
+    train_filename = f'{basename}_train{ext}'
+    dev_filename = f'{basename}_dev{ext}'
+
+    if os.path.exists(train_filename) and not overwrite:
+        raise FileExistsError('Target file already exists, set overwrite as True')
+
+    with open(filename) as f:
+        num_lines = len(f.readlines())
+
+    train_size = round(num_lines * 0.8)
+    indices = list(range(num_lines))
+    random.shuffle(indices)
+
+    def write_csv(filename, index, writer):
+        line = linecache.getline(filename, index)
+        data = next(csv.reader([line], delimiter='\t'))
+        writer.writerow(data)
+
+    with open(train_filename, 'w') as f:
+        writer = csv.writer(f, delimiter='\t')
+        for i in tqdm(indices[:train_size]):
+            write_csv(filename, i + 1, writer)
+
+    with open(dev_filename, 'w') as f:
+        writer = csv.writer(f, delimiter='\t')
+        for i in tqdm(indices[train_size:]):
+            write_csv(filename, i + 1, writer)
+
+
 if __name__ == '__main__':
     import pickle
     from allennlp.data.dataset_readers import SquadReader
