@@ -95,7 +95,7 @@ def make_small_dataset(filename, size=100, overwrite=False):
         raise FileExistsError('Target file already exists, set overwrite as True')
 
     with open(filename) as f:
-        num_lines = len(f.readlines()) - 1
+        num_lines = len(f.readlines())
 
     indices = random.sample(range(num_lines), size)
     with open(new_filename, 'w') as f:
