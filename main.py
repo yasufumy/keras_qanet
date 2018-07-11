@@ -21,7 +21,7 @@ parser.add_argument('--test-path', default='./data/dev-v1.1_filtered.txt', type=
 parser.add_argument('--min-freq', default=5, type=int)
 parser.add_argument('--max-size', default=30000, type=int)
 parser.add_argument('--vocab-file', default='vocab.pkl', type=str)
-parser.add_argument('--use-tensorboard', default=False, type=bool)
+parser.add_argument('--use-tensorboard', default=False, action='store_true')
 args = parser.parse_args()
 
 
