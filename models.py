@@ -78,7 +78,7 @@ class LightQANet:
             self_attention_layer.append([
                 Conv1D(2 * filters, 1),  # weights for key and value
                 Conv1D(filters, 1),  # weights for query
-                MultiHeadAttention(embed_size, 1)])
+                MultiHeadAttention(filters, 8)])
             ffn_layer.append([Conv1D(filters, 1, activation='relu'),
                               Conv1D(filters, 1, activation='linear')])
         self.conv_layers = conv_layers
@@ -100,7 +100,7 @@ class LightQANet:
             self_attention_layer.append([
                 Conv1D(2 * filters, 1),
                 Conv1D(filters, 1),
-                MultiHeadAttention(embed_size, 1)])
+                MultiHeadAttention(filters, 8)])
             ffn_layer.append([Conv1D(filters, 1, activation='relu'),
                               Conv1D(filters, 1, activation='linear')])
         self.conv_layers2 = conv_layers
