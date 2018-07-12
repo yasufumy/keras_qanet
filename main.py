@@ -14,7 +14,9 @@ from utils import evaluate, dump_graph
 
 parser = ArgumentParser()
 parser.add_argument('--epoch', default=100, type=int)
-parser.add_argument('--batch', default=64, type=int)
+parser.add_argument('--batch', default=32, type=int)
+parser.add_argument('--embed', default=128, type=int)
+parser.add_argument('--hidden', default=128, type=int)
 parser.add_argument('--train-path', default='./data/train-v1.1_filtered_train.txt', type=str)
 parser.add_argument('--dev-path', default='./data/train-v1.1_filtered_dev.txt', type=str)
 parser.add_argument('--test-path', default='./data/dev-v1.1_filtered.txt', type=str)
@@ -44,9 +46,8 @@ else:
 
 batch_size = args.batch  # Batch size for training.
 epochs = args.epoch  # Number of epochs to train for.
-latent_dim = 64  # Latent dimensionality of the encoding space.
 
-model = LightQANet(len(token_to_index), latent_dim, latent_dim).build()
+model = LightQANet(len(token_to_index), args.embed, args.hidden).build()
 opt = Adam(lr=0.001, beta_1=0.8, beta_2=0.999, epsilon=1e-7, clipnorm=5.)
 model.compile(optimizer=opt,
               loss=['sparse_categorical_crossentropy',
