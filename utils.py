@@ -1,13 +1,15 @@
 import os
 import csv
 import random
+import pickle
 import linecache
 
 from tqdm import tqdm
 import tensorflow as tf
+import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa
 
 
 def char_span_to_token_span(token_offsets, char_start, char_end):
@@ -150,8 +152,40 @@ def split_dataset(filename, ratio=0.8, overwrite=False):
             write_csv(filename, i + 1, writer)
 
 
+def save_word_embedding_as_npy(filename, dim):
+    npy_name = f'{filename}.npy'
+    dict_name = f'{filename}.dict'
+    embeddings = []
+    token_to_index = {}
+    with open(filename) as f:
+        for line in tqdm(f):
+            elements = line.split()
+            word = ''.join(elements[0:-dim])
+            vector = [float(x) for x in elements[-dim:]]
+            if len(vector) != dim:
+                continue
+            embeddings.append(vector)
+            token_to_index[word] = len(token_to_index)
+    with open(dict_name, 'wb') as f:
+        pickle.dump(token_to_index, f)
+
+    embeddings = np.array(embeddings, dtype=np.float32)
+
+    np.save(npy_name, embeddings)
+
+    return token_to_index, embeddings
+
+
+def extract_embeddings(vocab, big_vocab, big_embeddings):
+    embeddings = np.zeros(len(vocab), dtype=np.float32)
+    for word, index in vocab.items():
+        if word in big_vocab:
+            vector = big_embeddings[big_vocab[word]]
+            embeddings[index] = vector
+    return vector
+
+
 if __name__ == '__main__':
-    import pickle
     from allennlp.data.dataset_readers import SquadReader
 
     import spacy
