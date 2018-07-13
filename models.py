@@ -9,11 +9,9 @@ from layers import MultiHeadAttention, PositionEmbedding, ContextQueryAttention,
 
 
 def squeeze_block(x, squeeze_layer, dropout=0.):
-    residual = x
     x = BatchNormalization()(x)
     x = Dropout(dropout)(x)
     x = squeeze_layer(x)
-    x = Add()([x, residual])
     return x
 
 
