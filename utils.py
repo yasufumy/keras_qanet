@@ -176,13 +176,13 @@ def save_word_embedding_as_npy(filename, dim):
     return token_to_index, embeddings
 
 
-def extract_embeddings(vocab, big_vocab, big_embeddings):
-    embeddings = np.zeros(len(vocab), dtype=np.float32)
+def extract_embeddings(vocab, big_vocab, big_embeddings, dim=300):
+    embeddings = np.zeros((len(vocab), 300), dtype=np.float32)
     for word, index in vocab.items():
         if word in big_vocab:
             vector = big_embeddings[big_vocab[word]]
             embeddings[index] = vector
-    return vector
+    return embeddings
 
 
 if __name__ == '__main__':
