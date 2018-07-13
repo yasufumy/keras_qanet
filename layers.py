@@ -142,3 +142,23 @@ class ContextQueryAttention(Layer):
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0][0], input_shape[0][1], self.output_size)
+
+
+class LayerDropout(Layer):
+    def __init__(self, dropout=0., **kwargs):
+        self.dropout = dropout
+        super().__init__(**kwargs)
+
+    def build(self, input_shape):
+        super().build(input_shape)
+
+    def call(self, inputs, mask=None, training=None):
+        x, residual = inputs
+        pred = tf.random_uniform([]) < self.dropout
+        x_train = tf.cond(
+            pred, lambda: residual, lambda: tf.nn.dropout(x, 1. - self.dropout) + residual)
+        x_test = x + residual
+        return K.in_train_phase(x_train, x_test, training=training)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
