@@ -75,14 +75,14 @@ def mask_logits(inputs, mask, mask_value=tf.float32.min, axis=1, time_dim=1):
 class LightQANet:
     def __init__(self, vocab_size, embed_size, filters=128, cont_limit=400, ques_limit=50,
                  dropout=0.1, encoder_layer_size=1, encoder_conv_blocks=2,
-                 output_layer_size=2, output_conv_blocks=2):
+                 output_layer_size=2, output_conv_blocks=2, embeddings=None):
         self.cont_limit = cont_limit
         self.ques_limit = ques_limit
         self.dropout = dropout
         self.encoder_layer_size = encoder_layer_size
         self.output_layer_size = output_layer_size
 
-        self.embed_layer = Embedding(vocab_size, embed_size)
+        self.embed_layer = Embedding(vocab_size, embed_size, weights=[embeddings], trainable=False)
         self.e2h_squeeze_layer = Conv1D(filters, 1)
         conv_layers = []
         self_attention_layer = []
