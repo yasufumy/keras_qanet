@@ -1,11 +1,17 @@
 import tensorflow as tf
 from keras import backend as K
 from keras import Model
+from keras.regularizers import l2
+from keras.initializers import VarianceScaling
 from keras.layers import Input, Embedding, Concatenate, Lambda, \
-    BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Add, Dropout
+    BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Dropout
 
 from layers import MultiHeadAttention, PositionEmbedding, ContextQueryAttention, \
     LayerDropout
+
+
+regularizer = l2(3e-7)
+VarianceScaling(scale=1., mode='fan_in', distribution='normal')
 
 
 def squeeze_block(x, squeeze_layer, dropout=0.):
@@ -92,20 +98,20 @@ class LightQANet:
             conv_layers.append([])
             for j in range(encoder_conv_blocks):
                 conv_layers[i].append([
-                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1),
-                    Conv2D(filters, 1, padding='same')])
+                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
+                    Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
             self_attention_layer.append([
-                Conv1D(2 * filters, 1),  # weights for key and value
-                Conv1D(filters, 1),  # weights for query
+                Conv1D(2 * filters, 1, kernel_regularizer=regularizer),  # weights for key and value
+                Conv1D(filters, 1, kernel_regularizer=regularizer),  # weights for query
                 MultiHeadAttention(filters, num_heads)])
-            ffn_layer.append([Conv1D(filters, 1, activation='relu'),
-                              Conv1D(filters, 1, activation='linear')])
+            ffn_layer.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
+                              Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
         self.conv_layers = conv_layers
         self.self_attention_layer = self_attention_layer
         self.ffn_layer = ffn_layer
 
         self.cqattention_layer = ContextQueryAttention(filters * 4, cont_limit, ques_limit, 0.)
-        self.h2o_squeeze_layer = Conv1D(filters, 1, activation='linear')
+        self.h2o_squeeze_layer = Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)
 
         conv_layers = []
         self_attention_layer = []
@@ -114,20 +120,20 @@ class LightQANet:
             conv_layers.append([])
             for j in range(output_conv_blocks):
                 conv_layers[i].append([
-                    DepthwiseConv2D((5, 1), padding='same', depth_multiplier=1),
-                    Conv2D(filters, 1, padding='same')])
+                    DepthwiseConv2D((5, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
+                    Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
             self_attention_layer.append([
-                Conv1D(2 * filters, 1),
-                Conv1D(filters, 1),
+                Conv1D(2 * filters, 1, kernel_regularizer=regularizer),
+                Conv1D(filters, 1, kernel_regularizer=regularizer),
                 MultiHeadAttention(filters, num_heads)])
-            ffn_layer.append([Conv1D(filters, 1, activation='relu'),
-                              Conv1D(filters, 1, activation='linear')])
+            ffn_layer.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
+                              Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
         self.conv_layers2 = conv_layers
         self.self_attention_layer2 = self_attention_layer
         self.ffn_layer2 = ffn_layer
 
-        self.start_layer = Conv1D(1, 1, activation='linear')
-        self.end_layer = Conv1D(1, 1, activation='linear')
+        self.start_layer = Conv1D(1, 1, activation='linear', kernel_regularizer=regularizer)
+        self.end_layer = Conv1D(1, 1, activation='linear', kernel_regularizer=regularizer)
 
     def build(self):
         dropout = self.dropout

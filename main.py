@@ -10,7 +10,7 @@ from keras.callbacks import TensorBoard
 from models import LightQANet
 from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
     load_squad_tokens, SquadTestConverter
-from trainer import SquadTrainer, BatchLearningRateScheduler
+from trainer import SquadTrainer, BatchLearningRateScheduler, ExponentialMovingAverage
 from metrics import SquadMetric
 from utils import evaluate, dump_graph, extract_embeddings
 
@@ -82,6 +82,7 @@ dev_generator = Iterator(dev_dataset, batch_size, converter)
 trainer = SquadTrainer(model, train_generator, epochs, dev_generator,
                        'lightqanet.h5')
 trainer.add_callback(BatchLearningRateScheduler())
+trainer.add_callback(ExponentialMovingAverage(0.999))
 if args.use_tensorboard:
     trainer.add_callback(TensorBoard(log_dir='./graph', batch_size=batch_size))
 history = trainer.run()
