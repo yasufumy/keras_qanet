@@ -1,4 +1,7 @@
-from keras.callbacks import ModelCheckpoint
+import math
+
+from keras import backend as K
+from keras.callbacks import ModelCheckpoint, Callback
 
 
 class SquadTrainer:
@@ -17,3 +20,16 @@ class SquadTrainer:
 
     def add_callback(self, callback):
         self.callbacks.append(callback)
+
+
+class BatchLearningRateScheduler(Callback):
+    def on_train_begin(self, logs={}):
+        self.global_step = 1
+        lr = min(0.001, 0.001 / math.log(1000) * math.log(self.global_step))
+        K.set_value(self.model.optimizer.lr, lr)
+
+    def on_batch_end(self, batch, logs={}):
+        self.global_step += 1
+        if self.global_step <= 1000:
+            lr = min(0.001, 0.001 / math.log(1000) * math.log(self.global_step))
+            K.set_value(self.model.optimizer.lr, lr)
