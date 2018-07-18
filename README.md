@@ -1,6 +1,6 @@
-# Light QANet for SQuAD
+# QANet for SQuAD
 
-This is a lighter QANet for SQuAD. All models are implemented by Keras.
+This is a QANet for SQuAD. All models are implemented by Keras.
 
 ## Description
 
@@ -102,5 +102,5 @@ em_score, f1_score = evalute(model, test_generator, metric, index_to_token)
 ## Install
 
 ```
-$ git clone https://github.com/yasufumy/squad_project.git
+$ git clone https://github.com/yasufumy/keras_qanet.git
 ```
