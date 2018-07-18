@@ -51,6 +51,6 @@ class ExponentialMovingAverage(Callback):
             old_weight = self.weights[weight.name]
             self.weights[weight.name] = self.decay * old_weight + (1 - self.decay) * K.get_value(weight)
 
-    def on_epoch_end(self, logs={}):
+    def on_epoch_end(self, epoch, logs={}):
         for weight in self.model.trainable_weights:
             K.set_value(weight, self.weights[weight.name])
