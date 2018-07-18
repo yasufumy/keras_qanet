@@ -58,8 +58,9 @@ def dump_graph(history, filename):
 
 
 def evaluate(model, test_generator, metric, index_to_token, answer_limit=30):
+    count = 0
     for inputs, answer in test_generator:
-        start_scores, end_scores = model.predict_on_batch(inputs)
+        start_scores, end_scores, S_bar, S_T = model.predict_on_batch(inputs)
         scores = tf.matmul(tf.expand_dims(start_scores, axis=2),
                            tf.expand_dims(end_scores, axis=1))
         scores = tf.matrix_band_part(scores, 0, answer_limit)
@@ -70,11 +71,51 @@ def evaluate(model, test_generator, metric, index_to_token, answer_limit=30):
             start_indices = sess.run(start_indices).reshape(-1)
             end_indices = sess.run(end_indices).reshape(-1)
 
-        context = inputs[1]
+        questions, contexts = inputs
         for i, (start, end) in enumerate(zip(start_indices, end_indices)):
-            prediction = ' '.join(index_to_token[context[i][j]] for j in range(start, end + 1))
+            context = [index_to_token[x] for x in contexts[i] if x]
+            question = [index_to_token[x] for x in questions[i] if x]
+            if random.random() > .5 and count < 20:
+                visualize(question, context, answer[i], S_T[i], f'attention_{count}.png')
+                count += 1
+            prediction = ' '.join(context[j] for j in range(start, end + 1))
+
             metric(prediction, answer[i])
     return metric.get_metric()
+
+
+def visualize(question, context, answer, score, filename):
+    f = plt.figure(figsize=(40, 12))
+    ax = f.add_subplot(1, 1, 1)
+
+    i = ax.imshow(score[:len(question), :len(context)],
+                  interpolation='nearest', cmap='Blues')
+
+    cbaxes = f.add_axes([0.2, 0.1, 0.6, 0.03])
+    cbar = f.colorbar(i, cax=cbaxes, orientation='horizontal')
+    cbar.ax.set_xlabel('Probability', labelpad=2, fontsize=32)
+
+    ax.set_yticks(range(len(question)))
+    ax.set_yticklabels(question)
+
+    ax.set_xticks(range(len(context)))
+    ax.set_xticklabels(context, rotation=45)
+
+    ax.set_ylabel('Question', fontsize=32)
+    ax.set_xlabel('Context', fontsize=32)
+
+    f.set_size_inches(40, 12)
+    f.savefig(filename, dpi=100)
+
+    # grid_kws = {'height_ratios': (.95, .05), 'hspace': 0}
+    # f, (ax, cbar_ax) = plt.subplots(2, gridspec_kw=grid_kws, figsize=(40, 12))
+    # ax = sns.heatmap(score[:len(question), :len(context)], ax=ax,
+    #                  cbar_ax=cbar_ax, cbar=True,
+    #                  cbar_kws={'orientation': 'horizontal'},
+    #                  xticklabels=context, yticklabels=question, square=True)
+    # ax.tick_params(labelsize=12)
+    # f.set_size_inches(40, 12)
+    # f.savefig(filename, dpi=100)
 
 
 def filter_dataset(filename, question_max_length=50, context_max_length=400):

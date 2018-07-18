@@ -78,7 +78,7 @@ def mask_logits(inputs, mask, mask_value=tf.float32.min, axis=1, time_dim=1):
     return inputs + mask_value * (1 - mask)
 
 
-class LightQANet:
+class QANet:
     def __init__(self, vocab_size, embed_size, filters=128, num_heads=1,
                  cont_limit=400, ques_limit=50,
                  dropout=0.1, encoder_layer_size=1, encoder_conv_blocks=2,
@@ -88,8 +88,10 @@ class LightQANet:
         self.dropout = dropout
         self.encoder_layer_size = encoder_layer_size
         self.output_layer_size = output_layer_size
-
-        self.embed_layer = Embedding(vocab_size, embed_size, weights=[embeddings], trainable=False)
+        if embeddings is not None:
+            embeddings = [embeddings]
+        self.embed_layer = Embedding(
+            vocab_size, embed_size, weights=embeddings, trainable=False)
         self.e2h_squeeze_layer = Conv1D(filters, 1)
         conv_layers = []
         self_attention_layer = []
@@ -160,7 +162,7 @@ class LightQANet:
                                self.ffn_layer, ques_len, dropout,
                                num_blocks=self.encoder_layer_size, repeat=1)[1]
 
-        x = self.cqattention_layer([x_cont, x_ques, cont_len, ques_len])
+        x, S_bar, S_T = self.cqattention_layer([x_cont, x_ques, cont_len, ques_len])
         x = self.h2o_squeeze_layer(x)
 
         outputs = encoder_block(x, self.conv_layers2, self.self_attention_layer2,
@@ -179,4 +181,4 @@ class LightQANet:
         x_end = Lambda(lambda x: mask_logits(x[0], x[1], axis=0, time_dim=1))([x_end, cont_len])
         x_end = Lambda(lambda x: K.softmax(x), name='end')(x_end)  # batch * seq_len
 
-        return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end])
+        return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end, S_bar, S_T])
