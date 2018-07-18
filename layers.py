@@ -138,10 +138,12 @@ class ContextQueryAttention(Layer):
         c2q = tf.matmul(S_bar, x_ques)
         q2c = tf.matmul(tf.matmul(S_bar, S_T), x_cont)
         result = K.concatenate([x_cont, c2q, x_cont * c2q, x_cont * q2c], axis=-1)
-        return result
+        return [result, S_bar, S_T]
 
     def compute_output_shape(self, input_shape):
-        return (input_shape[0][0], input_shape[0][1], self.output_size)
+        return [(input_shape[0][0], input_shape[0][1], self.output_size),
+                (input_shape[0][0], input_shape[0][1], input_shape[1][1]),
+                (input_shape[0][0], input_shape[1][1], input_shape[0][1])]
 
 
 class LayerDropout(Layer):
