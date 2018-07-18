@@ -7,7 +7,7 @@ import spacy
 from keras.optimizers import Adam
 from keras.callbacks import TensorBoard
 
-from models import LightQANet
+from models import QANet
 from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
     load_squad_tokens, SquadTestConverter
 from trainer import SquadTrainer, BatchLearningRateScheduler, ExponentialMovingAverage
@@ -56,24 +56,27 @@ else:
     token_to_index, index_to_token = Vocabulary.load(args.vocab_file)
 
 if not os.path.exists(args.embed_file):
-    with open(args.embed_dict_path, 'rb') as f:
-        big_token_to_index = pickle.load(f)
-    embeddings = extract_embeddings(token_to_index, big_token_to_index, np.load(args.embed_array_path))
-    np.save(args.embed_file, embeddings)
+    if os.path.exists(args.embed_dict_path):
+        with open(args.embed_dict_path, 'rb') as f:
+            big_token_to_index = pickle.load(f)
+        embeddings = extract_embeddings(token_to_index, big_token_to_index, np.load(args.embed_array_path))
+        np.save(args.embed_file, embeddings)
+    else:
+        embeddings = None
 else:
     embeddings = np.load(args.embed_file)
 
 batch_size = args.batch  # Batch size for training.
 epochs = args.epoch  # Number of epochs to train for.
 
-model = LightQANet(len(token_to_index), args.embed, args.hidden, args.num_heads,
-                   dropout=args.dropout, encoder_layer_size=args.encoder_layer,
-                   encoder_conv_blocks=args.encoder_conv, output_layer_size=args.output_layer,
+model = QANet(len(token_to_index), args.embed, args.hidden, args.num_heads,
+              dropout=args.dropout, encoder_layer_size=args.encoder_layer,
+              encoder_conv_blocks=args.encoder_conv, output_layer_size=args.output_layer,
                    output_conv_blocks=args.output_conv, embeddings=embeddings).build()
 opt = Adam(lr=0.001, beta_1=0.8, beta_2=0.999, epsilon=1e-7, clipnorm=5.)
 model.compile(optimizer=opt,
               loss=['sparse_categorical_crossentropy',
-                    'sparse_categorical_crossentropy'], loss_weights=[1, 1])
+                    'sparse_categorical_crossentropy', None, None], loss_weights=[1, 1, 0, 0])
 train_dataset = SquadReader(args.train_path)
 dev_dataset = SquadReader(args.dev_path)
 converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
