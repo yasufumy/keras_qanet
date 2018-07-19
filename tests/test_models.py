@@ -1,7 +1,7 @@
 from unittest import TestCase
 
 from keras import backend as K
-from models import LightQANet
+from models import QANet
 
 
 class TestLightQANet(TestCase):
@@ -10,10 +10,10 @@ class TestLightQANet(TestCase):
         embed_size = filters = 32
         context_limit = 40
         query_limit = 5
-        model = LightQANet(
+        model = QANet(
             vocab_size, embed_size, filters, context_limit, query_limit).build()
         query_input, context_input = model.inputs
-        start_prob, end_prob = model.outputs
+        start_prob, end_prob, S_bar, S_T = model.outputs
 
         self.assertTupleEqual(K.int_shape(query_input), (None, query_limit))
         self.assertTupleEqual(K.int_shape(context_input), (None, context_limit))
