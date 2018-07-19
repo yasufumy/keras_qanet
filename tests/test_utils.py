@@ -33,7 +33,10 @@ class TestUitls(TestCase):
         model = Mock()
         start_prob = np.array([[0, 1, 0, 0, 0]], dtype=np.float32)
         end_prob = np.array([[0, 0, 1, 0, 0]], dtype=np.float32)
-        model.configure_mock(**{'predict_on_batch.return_value': [start_prob, end_prob]})
+        S_bar = np.random.randn(1, 5, 5)
+        S_T = np.random.randn(1, 5, 5)
+        model.configure_mock(**{'predict_on_batch.return_value': [start_prob, end_prob, S_bar, S_T]})
+        mock_visualize = patch('utils.visualize').start()
         test_generator = MagicMock()
         context = np.array([[1, 2, 3, 4, 5]])
         question = np.array([[6, 7, 8]])
@@ -45,6 +48,7 @@ class TestUitls(TestCase):
         self.assertEqual(em_score, 1.)
         self.assertEqual(f1_score, 1.)
         model.predict_on_batch.assert_called_with([question, context])
+        mock_visualize.stop()
 
     def test_filter_dataset(self):
         filename = '/path/to/dataset.tsv'
