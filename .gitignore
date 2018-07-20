@@ -104,6 +104,7 @@ venv.bak/
 .mypy_cache/
 
 data/*
+model/*
+!.gitignore
 fra-eng/*
-*.h5
 *.pkl
