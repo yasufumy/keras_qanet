@@ -83,7 +83,7 @@ converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
 train_generator = Iterator(train_dataset, batch_size, converter)
 dev_generator = Iterator(dev_dataset, batch_size, converter)
 trainer = SquadTrainer(model, train_generator, epochs, dev_generator,
-                       'lightqanet.h5')
+        './model/lightqanet.{epoch:02d}-{val_loss:.2f}.h5')
 trainer.add_callback(BatchLearningRateScheduler())
 trainer.add_callback(ExponentialMovingAverage(0.999))
 if args.use_tensorboard:
