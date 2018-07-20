@@ -3,6 +3,7 @@ import math
 import tensorflow as tf
 from keras import backend as K
 from keras.engine.topology import Layer
+from keras.regularizers import l2
 
 
 class PositionEmbedding(Layer):
@@ -117,6 +118,15 @@ class ContextQueryAttention(Layer):
         self.dropout = dropout
         super().__init__(**kwargs)
 
+    def build(self, input_shape):
+        # input_shape = [(batch, context_limit, hidden), (batch, question_limit, hidden)]
+        self.W0 = self.add_weight(name='W0', trainable=True, shape=(input_shape[0][2], 1),
+                                  initializer='glorot_uniform', regularizer=l2(3e-7))
+        self.W1 = self.add_weight(name='W1', trainable=True, shape=(input_shape[1][2], 1),
+                                  initializer='glorot_uniform', regularizer=l2(3e-7))
+        self.W2 = self.add_weight(name='W2', trainable=True, shape=(1, 1, input_shape[0][2]),
+                                  initializer='glorot_uniform', regularizer=l2(3e-7))
+
     def apply_mask(self, inputs, seq_len, axis=1, time_dim=1, mode='add'):
         if seq_len is None:
             return inputs
@@ -132,7 +142,10 @@ class ContextQueryAttention(Layer):
 
     def call(self, inputs, mask=None):
         x_cont, x_ques, cont_len, ques_len = inputs
-        S = tf.matmul(x_cont, x_ques, transpose_b=True)
+        S_cont = K.tile(K.dot(x_cont, self.W0), [1, 1, self.ques_limit])
+        S_ques = K.tile(K.permute_dimensions(K.dot(x_ques, self.W1), pattern=(0, 2, 1)), [1, self.cont_limit, 1])
+        S_fuse = K.batch_dot(x_cont * self.W2, K.permute_dimensions(x_ques, pattern=(0, 2, 1)))
+        S = S_cont + S_ques + S_fuse
         S_bar = tf.nn.softmax(self.apply_mask(S, ques_len, axis=1, time_dim=2))
         S_T = K.permute_dimensions(tf.nn.softmax(self.apply_mask(S, cont_len, axis=2, time_dim=1), axis=1), (0, 2, 1))
         c2q = tf.matmul(S_bar, x_ques)
@@ -150,9 +163,6 @@ class LayerDropout(Layer):
     def __init__(self, dropout=0., **kwargs):
         self.dropout = dropout
         super().__init__(**kwargs)
-
-    def build(self, input_shape):
-        super().build(input_shape)
 
     def call(self, inputs, mask=None, training=None):
         x, residual = inputs
