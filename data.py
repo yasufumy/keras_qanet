@@ -20,8 +20,9 @@ def make_vocab(tokens, min_count, max_vocab_size,
         index_to_token = speicial_tokens + ordered_tokens
     else:
         index_to_token = ordered_tokens
-    if len(index_to_token) > max_vocab_size:
-        index_to_token = index_to_token[:max_vocab_size]
+    if max_vocab_size is not None:
+        if len(index_to_token) > max_vocab_size:
+            index_to_token = index_to_token[:max_vocab_size]
     indices = range(len(index_to_token))
     token_to_index = dict(zip(index_to_token, indices))
     return token_to_index, list(index_to_token)
