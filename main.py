@@ -34,6 +34,7 @@ parser.add_argument('--embed-dict-path', default='./data/wiki.en.vec.dict', type
 parser.add_argument('--min-freq', default=10, type=int)
 parser.add_argument('--max-size', default=None, type=int)
 parser.add_argument('--vocab-file', default='vocab.pkl', type=str)
+parser.add_argument('--lower', default=False, action='store_true')
 parser.add_argument('--use-tensorboard', default=False, action='store_true')
 args = parser.parse_args()
 
@@ -45,7 +46,8 @@ if not os.path.exists(args.vocab_file):
     spacy_en = spacy.load('en_core_web_sm',
                           disable=['vectors', 'textcat', 'tagger', 'parser', 'ner'])
 
-    def tokenizer(x): return [token.text.lower() for token in spacy_en(x) if not token.is_space]
+    def tokenizer(x): return [token.text.lower if args.lower else token.text
+                              for token in spacy_en(x) if not token.is_space]
 
     squad_tokens = load_squad_tokens(args.train_path, tokenizer)
     token_to_index, index_to_token = Vocabulary.build(
@@ -72,18 +74,18 @@ epochs = args.epoch  # Number of epochs to train for.
 model = QANet(len(token_to_index), args.embed, args.hidden, args.num_heads,
               dropout=args.dropout, encoder_layer_size=args.encoder_layer,
               encoder_conv_blocks=args.encoder_conv, output_layer_size=args.output_layer,
-                   output_conv_blocks=args.output_conv, embeddings=embeddings).build()
+              output_conv_blocks=args.output_conv, embeddings=embeddings).build()
 opt = Adam(lr=0.001, beta_1=0.8, beta_2=0.999, epsilon=1e-7, clipnorm=5.)
 model.compile(optimizer=opt,
               loss=['sparse_categorical_crossentropy',
                     'sparse_categorical_crossentropy', None, None], loss_weights=[1, 1, 0, 0])
 train_dataset = SquadReader(args.train_path)
 dev_dataset = SquadReader(args.dev_path)
-converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
+converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN, lower=args.lower)
 train_generator = Iterator(train_dataset, batch_size, converter)
 dev_generator = Iterator(dev_dataset, batch_size, converter)
 trainer = SquadTrainer(model, train_generator, epochs, dev_generator,
-        './model/lightqanet.{epoch:02d}-{val_loss:.2f}.h5')
+                       './model/lightqanet.{epoch:02d}-{val_loss:.2f}.h5')
 trainer.add_callback(BatchLearningRateScheduler())
 trainer.add_callback(ExponentialMovingAverage(0.999))
 if args.use_tensorboard:
@@ -93,7 +95,7 @@ dump_graph(history, 'loss_graph.png')
 
 metric = SquadMetric()
 test_dataset = SquadReader(args.test_path)
-converter = SquadTestConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
+converter = SquadTestConverter(token_to_index, PAD_TOKEN, UNK_TOKEN, lower=args.lower)
 test_generator = Iterator(test_dataset, args.batch, converter, False, False)
 em_score, f1_score = evaluate(model, test_generator, metric, index_to_token)
 print('EM: {}, F1: {}'.format(em_score, f1_score))
