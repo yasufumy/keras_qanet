@@ -112,7 +112,7 @@ class QANet:
         self.self_attention_layer = self_attention_layer
         self.ffn_layer = ffn_layer
 
-        self.cqattention_layer = ContextQueryAttention(filters * 4, cont_limit, ques_limit, 0.)
+        self.cqattention_layer = ContextQueryAttention(filters * 4, cont_limit, ques_limit, dropout)
         self.h2o_squeeze_layer = Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)
 
         conv_layers = []
