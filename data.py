@@ -29,10 +29,10 @@ def make_vocab(tokens, min_count, max_vocab_size,
     return token_to_index, list(index_to_token)
 
 
-def load_squad_tokens(filename, tokenizer):
+def load_squad_tokens(filename, tokenizer, indices=[0, 1]):
     with open(filename) as f:
         data = [row for row in csv.reader(f, delimiter='\t')]
-    data = [[tokenizer(x[0]), tokenizer(x[1])] for x in data]
+    data = [[tokenizer(x[i]) for i in indices] for x in data]
     contexts, questions = zip(*data)
     tokens = (token for tokens in contexts + questions for token in tokens)
     return tokens
@@ -200,7 +200,7 @@ class SquadDepConverter:
         tokens, deps = zip(*(self._token_and_dep(question) for question in questions))
         inputs = self._process_text(tokens, self._question_max_len, self._token_to_index, self._unk_index)
         outputs = self._process_text(deps, self._question_max_len, self._dep_to_index, self._unk_dep)
-        return inputs, outputs
+        return inputs, outputs[:, :, None]
 
     def _process_text(self, texts, max_length, token_to_index, unk_index):
         texts = [[self._lower(token) for token in text] for text in texts]
