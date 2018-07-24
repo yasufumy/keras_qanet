@@ -207,7 +207,7 @@ class TestSquadDepConverter(TestSquadConverter):
         expected = np.array([[9, 2, 10, 4, 1]], dtype=np.int32)
         np.testing.assert_array_equal(inputs, expected)
         # outputs
-        expected = np.array([[6, 50, 42, 31, 47]], dtype=np.int32)
+        expected = np.array([[6, 50, 42, 31, 47]], dtype=np.int32)[:, :, None]
         np.testing.assert_array_equal(outputs, expected)
 
     def test_process_text(self):
