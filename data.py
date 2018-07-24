@@ -9,6 +9,7 @@ import numpy as np
 import spacy
 
 from utils import get_spans
+from dependency_labels import LABELS
 
 
 def make_vocab(tokens, min_count, max_vocab_size,
@@ -170,6 +171,45 @@ class SquadConverter:
         texts = [x + [self._pad_token] * (max_length - len(x)) for x in texts]
         return np.array([
             [self._token_to_index.get(token, self._unk_index) for token in text]
+            for text in texts], dtype=np.int32)
+
+
+class SquadDepConverter:
+    def __init__(self, token_to_index, pad_token, unk_token, lower=True,
+                 question_max_len=50):
+        spacy_en = spacy.load(
+            'en_core_web_sm', disable=['vectors', 'textcat', 'tagger', 'ner'])
+
+        def token_and_dep(x):
+            token, dep = zip(*([token.text, token.dep_] for token in spacy_en(x) if not token.is_space))
+            return token, dep
+
+        self._token_and_dep = token_and_dep
+        self._token_to_index = token_to_index
+        LABELS[pad_token] = len(LABELS)
+        self._dep_to_index = LABELS
+        self._pad_token = pad_token
+        self._unk_index = token_to_index[unk_token]
+        self._unk_dep = LABELS['dep']
+        self._lower = str.lower if lower else lambda x: x
+        self._question_max_len = question_max_len
+
+    def __call__(self, batch):
+        _, questions, _, _, _ = zip(*batch)
+
+        tokens, deps = zip(*(self._token_and_dep(question) for question in questions))
+        inputs = self._process_text(tokens, self._question_max_len, self._token_to_index, self._unk_index)
+        outputs = self._process_text(deps, self._question_max_len, self._dep_to_index, self._unk_dep)
+        return inputs, outputs
+
+    def _process_text(self, texts, max_length, token_to_index, unk_index):
+        texts = [[self._lower(token) for token in text] for text in texts]
+        length = max(len(text) for text in texts)
+        if length > max_length:
+            texts = [text[:max_length] for text in texts]
+        texts = [x + [self._pad_token] * (max_length - len(x)) for x in texts]
+        return np.array([
+            [token_to_index.get(token, unk_index) for token in text]
             for text in texts], dtype=np.int32)
 
 
