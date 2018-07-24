@@ -182,3 +182,66 @@ class QANet:
         x_end = Lambda(lambda x: K.softmax(x), name='end')(x_end)  # batch * seq_len
 
         return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end, S_bar, S_T])
+
+
+class DependencyNet:
+    def __init__(self, vocab_size, embed_size, output_size, filters=128, num_heads=1,
+                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=2,
+                 embeddings=None):
+        self.ques_limit = ques_limit
+        self.num_blocks = num_blocks
+        self.num_convs = num_convs
+        self.dropout = dropout
+        if embeddings is not None:
+            embeddings = [embeddings]
+        self.embed_layer = Embedding(
+            vocab_size, embed_size, weights=embeddings, trainable=False)
+        self.e2h_squeeze_layer = Conv1D(filters, 1)
+        conv_layers = []
+        self_attention_layer = []
+        ffn_layer = []
+        for i in range(num_blocks):
+            conv_layers.append([])
+            for j in range(num_convs):
+                conv_layers[i].append([
+                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
+                    Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
+            self_attention_layer.append([
+                Conv1D(2 * filters, 1, kernel_regularizer=regularizer),  # weights for key and value
+                Conv1D(filters, 1, kernel_regularizer=regularizer),  # weights for query
+                MultiHeadAttention(filters, num_heads)])
+            ffn_layer.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
+                              Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
+        self.conv_layers = conv_layers
+        self.self_attention_layer = self_attention_layer
+        self.ffn_layer = ffn_layer
+
+        self.output_layer = Conv1D(output_size, 1, activation='linear', kernel_regularizer=regularizer)
+
+    def build(self):
+        dropout = self.dropout
+
+        ques_input = Input((self.ques_limit,))
+
+        # mask
+        q_mask = Lambda(lambda x: tf.cast(x, tf.bool))(ques_input)
+        ques_len = Lambda(lambda x: tf.expand_dims(tf.reduce_sum(tf.cast(x, tf.int32), axis=1), axis=1))(q_mask)
+
+        # encoding each
+        x_ques = self.embed_layer(ques_input)
+        x_ques = squeeze_block(x_ques, self.e2h_squeeze_layer, dropout)
+        x_ques = encoder_block(x_ques, self.conv_layers, self.self_attention_layer,
+                               self.ffn_layer, ques_len, dropout,
+                               num_blocks=self.num_blocks, repeat=1)[1]
+
+        y = self.output_layer(x_ques)  # batch * seq_len * output_size
+
+        def mask_sequence(x, length):
+            mask = tf.expand_dims(tf.sequence_mask(
+                tf.squeeze(length, axis=1), maxlen=self.ques_limit, dtype=tf.float32), dim=2)
+            return x * mask + tf.float32.min * (1. - mask)
+
+        y = Lambda(lambda x: mask_sequence(x[0], x[1]))([y, ques_len])
+        y = Lambda(lambda x: K.softmax(x), name='end')(y)  # batch * seq_len
+
+        return Model(inputs=ques_input, outputs=y)
