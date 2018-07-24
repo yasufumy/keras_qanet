@@ -3,7 +3,7 @@ from unittest import TestCase
 
 import numpy as np
 from data import make_vocab, load_squad_tokens, SquadReader, Iterator,\
-    SquadConverter, SquadTestConverter, Vocabulary
+    SquadConverter, SquadTestConverter, Vocabulary, SquadDepConverter
 
 
 class TestData(TestCase):
@@ -194,3 +194,30 @@ class TestSquadTestConverter(TestSquadConverter):
         valid_answer = 'well - done'
         result = self.converter._get_valid_tokenized_answers([answer])
         self.assertListEqual(result, [valid_answer])
+
+
+class TestSquadDepConverter(TestSquadConverter):
+    def setUp(self):
+        self.converter = SquadDepConverter(
+            self.token_to_index, '<pad>', '<unk>', True, 5)
+
+    def test_call(self):
+        inputs, outputs = self.converter(self.batch)
+        # inputs
+        expected = np.array([[9, 2, 10, 4, 1]], dtype=np.int32)
+        np.testing.assert_array_equal(inputs, expected)
+        # outputs
+        expected = np.array([[6, 50, 42, 31, 47]], dtype=np.int32)[:, :, None]
+        np.testing.assert_array_equal(outputs, expected)
+
+    def test_process_text(self):
+        tokens, deps = self.converter._token_and_dep(self.batch[0][1])
+        # token
+        batch = self.converter._process_text([tokens], 5, self.token_to_index, 1)
+        expected = np.array([[9, 2, 10, 4, 1]], dtype=np.int32)
+        np.testing.assert_array_equal(batch, expected)
+        # dep
+        batch = self.converter._process_text(
+            [deps], 5, self.converter._dep_to_index, self.converter._unk_dep)
+        expected = np.array([[6, 50, 42, 31, 47]], dtype=np.int32)
+        np.testing.assert_array_equal(batch, expected)
