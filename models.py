@@ -4,7 +4,7 @@ from keras import Model
 from keras.regularizers import l2
 from keras.initializers import VarianceScaling
 from keras.layers import Input, Embedding, Concatenate, Lambda, \
-    BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Dropout
+    BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Dropout, Masking
 
 from layers import MultiHeadAttention, PositionEmbedding, ContextQueryAttention, \
     LayerDropout
@@ -239,9 +239,10 @@ class DependencyNet:
         def mask_sequence(x, length):
             mask = tf.expand_dims(tf.sequence_mask(
                 tf.squeeze(length, axis=1), maxlen=self.ques_limit, dtype=tf.float32), dim=2)
-            return x * mask + tf.float32.min * (1. - mask)
+            return x * mask
 
-        y = Lambda(lambda x: mask_sequence(x[0], x[1]))([y, ques_len])
         y = Lambda(lambda x: K.softmax(x), name='end')(y)  # batch * seq_len
+        y = Lambda(lambda x: mask_sequence(x[0], x[1]))([y, ques_len])
+        y = Masking(mask_value=0.)(y)
 
         return Model(inputs=ques_input, outputs=y)
