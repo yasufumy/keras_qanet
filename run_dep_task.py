@@ -7,12 +7,11 @@ import spacy
 from keras.optimizers import Adam
 from keras.callbacks import TensorBoard
 
-from models import DependencyNet
+from models import DependencyNet, DependencyLSTM
 from data import SquadReader, Iterator, SquadDepConverter, Vocabulary,\
     load_squad_tokens
 from trainer import SquadTrainer, BatchLearningRateScheduler, ExponentialMovingAverage
-from metrics import SquadMetric
-from utils import evaluate, dump_graph, extract_embeddings
+from utils import dump_graph, extract_embeddings
 
 parser = ArgumentParser()
 parser.add_argument('--epoch', default=100, type=int)
@@ -32,6 +31,7 @@ parser.add_argument('--embed-dict-path', default='./data/wiki.en.vec.dict', type
 parser.add_argument('--min-freq', default=10, type=int)
 parser.add_argument('--max-size', default=None, type=int)
 parser.add_argument('--vocab-file', default='vocab.pkl', type=str)
+parser.add_argument('--model', default='lstm', choices=['lstm', 'qanet'], type=str)
 parser.add_argument('--use-tensorboard', default=False, action='store_true')
 args = parser.parse_args()
 
@@ -68,10 +68,16 @@ batch_size = args.batch  # Batch size for training.
 epochs = args.epoch  # Number of epochs to train for.
 converter = SquadDepConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
 
-model = DependencyNet(len(token_to_index), args.embed, len(converter._dep_to_index),
-                      args.hidden, args.num_heads,
-                      dropout=args.dropout, num_blocks=args.encoder_layer,
-                      num_convs=args.encoder_conv, embeddings=embeddings).build()
+if args.model == 'qanet':
+    model = DependencyNet(len(token_to_index), args.embed, len(converter._dep_to_index),
+                          args.hidden, args.num_heads,
+                          dropout=args.dropout, num_blocks=args.encoder_layer,
+                          num_convs=args.encoder_conv, embeddings=embeddings).build()
+elif args.model == 'lstm':
+    model = DependencyLSTM(len(token_to_index), args.embed, len(converter._dep_to_index),
+                           args.hidden, dropout=args.dropout, embeddings=embeddings).build()
+
+
 opt = Adam(lr=0.001, beta_1=0.8, beta_2=0.999, epsilon=1e-7, clipnorm=5.)
 model.compile(optimizer=opt, loss=['sparse_categorical_crossentropy'],
               metrics=['sparse_categorical_accuracy'])
@@ -88,8 +94,6 @@ if args.use_tensorboard:
 history = trainer.run()
 dump_graph(history, 'loss_graph.png')
 
-metric = SquadMetric()
 test_dataset = SquadReader(args.test_path)
 test_generator = Iterator(test_dataset, args.batch, converter, False, False)
-em_score, f1_score = evaluate(model, test_generator, metric, index_to_token)
-print('EM: {}, F1: {}'.format(em_score, f1_score))
+print(model.evaluate_generator(test_generator))
