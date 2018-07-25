@@ -33,8 +33,12 @@ def load_squad_tokens(filename, tokenizer, indices=[0, 1]):
     with open(filename) as f:
         data = [row for row in csv.reader(f, delimiter='\t')]
     data = [[tokenizer(x[i]) for i in indices] for x in data]
-    contexts, questions = zip(*data)
-    tokens = (token for tokens in contexts + questions for token in tokens)
+    results = list(zip(*data))
+    if len(results) == 1:
+        sequence = results[0]
+    elif len(results) == 2:
+        sequence = results[0] + results[1]
+    tokens = (token for tokens in sequence for token in tokens)
     return tokens
 
 
