@@ -16,7 +16,7 @@ def main(args):
     postprocess = str.lower if args.lower else lambda x: x
 
     def tokenizer(x):
-        return [postprocess(token.text) for token in spacy_en(x) if token.is_space]
+        return [postprocess(token.text) for token in spacy_en(x) if not token.is_space]
 
     if args.only_question:
         indices = [1]
