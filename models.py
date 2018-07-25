@@ -4,7 +4,8 @@ from keras import Model
 from keras.regularizers import l2
 from keras.initializers import VarianceScaling
 from keras.layers import Input, Embedding, Concatenate, Lambda, \
-    BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Dropout, Masking
+    BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Dropout, Masking, \
+    LSTM, Bidirectional, Dense
 
 from layers import MultiHeadAttention, PositionEmbedding, ContextQueryAttention, \
     LayerDropout
@@ -244,5 +245,28 @@ class DependencyNet:
         y = Lambda(lambda x: K.softmax(x), name='end')(y)  # batch * seq_len
         y = Lambda(lambda x: mask_sequence(x[0], x[1]))([y, ques_len])
         y = Masking(mask_value=0.)(y)
+
+        return Model(inputs=ques_input, outputs=y)
+
+
+class DependencyLSTM:
+    def __init__(self, vocab_size, embed_size, output_size, hidden_size=128,
+                 ques_limit=50, dropout=0.1, embeddings=None):
+        self.ques_limit = ques_limit
+        if embeddings is not None:
+            embeddings = [embeddings]
+        self.embed_layer = Embedding(
+            vocab_size, embed_size, weights=embeddings, trainable=False, mask_zero=True)
+        self.lstm = Bidirectional(LSTM(hidden_size, return_sequences=True))
+        self.output_layer = Dense(output_size, activation='softmax')
+
+    def build(self):
+        ques_input = Input((self.ques_limit,))
+
+        # encoding each
+        x_ques = self.embed_layer(ques_input)
+        x_ques = self.lstm(x_ques)
+
+        y = self.output_layer(x_ques)  # batch * seq_len * output_size
 
         return Model(inputs=ques_input, outputs=y)
