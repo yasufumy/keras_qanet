@@ -185,14 +185,29 @@ class QANet:
         return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end, S_bar, S_T])
 
 
-class DependencyNet:
+def encoder_block_simple(x, conv_layers, ffn_layer, seq_len, dropout,
+                         num_blocks, repeat=1, position=False):
+    outputs = [x]
+    for _ in range(repeat):
+        x = outputs[-1]
+        for j in range(num_blocks):
+            if position:
+                x = PositionEmbedding()(x)
+            x = conv_block(x, conv_layers[j], dropout, j, num_blocks)
+            x = ffn_block(x, ffn_layer[j], dropout, j, num_blocks)
+        outputs.append(x)
+    return outputs
+
+
+class DependencyQANet:
     def __init__(self, vocab_size, embed_size, output_size, filters=128, num_heads=1,
                  ques_limit=50, dropout=0.1, num_blocks=1, num_convs=2,
-                 embeddings=None):
+                 embeddings=None, only_conv=False):
         self.ques_limit = ques_limit
         self.num_blocks = num_blocks
         self.num_convs = num_convs
         self.dropout = dropout
+        self.only_conv = only_conv
         if embeddings is not None:
             embeddings = [embeddings]
         self.embed_layer = Embedding(
@@ -207,10 +222,11 @@ class DependencyNet:
                 conv_layers[i].append([
                     DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
                     Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
-            self_attention_layer.append([
-                Conv1D(2 * filters, 1, kernel_regularizer=regularizer),  # weights for key and value
-                Conv1D(filters, 1, kernel_regularizer=regularizer),  # weights for query
-                MultiHeadAttention(filters, num_heads)])
+            if not only_conv:
+                self_attention_layer.append([
+                    Conv1D(2 * filters, 1, kernel_regularizer=regularizer),  # weights for key and value
+                    Conv1D(filters, 1, kernel_regularizer=regularizer),  # weights for query
+                    MultiHeadAttention(filters, num_heads)])
             ffn_layer.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
                               Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
         self.conv_layers = conv_layers
@@ -231,9 +247,14 @@ class DependencyNet:
         # encoding each
         x_ques = self.embed_layer(ques_input)
         x_ques = squeeze_block(x_ques, self.e2h_squeeze_layer, dropout)
-        x_ques = encoder_block(x_ques, self.conv_layers, self.self_attention_layer,
-                               self.ffn_layer, ques_len, dropout,
-                               num_blocks=self.num_blocks, repeat=1)[1]
+        if not self.only_conv:
+            x_ques = encoder_block(x_ques, self.conv_layers, self.self_attention_layer,
+                                   self.ffn_layer, ques_len, dropout,
+                                   num_blocks=self.num_blocks, repeat=1)[1]
+        else:
+            x_ques = encoder_block_simple(x_ques, self.conv_layers,
+                                          self.ffn_layer, ques_len, dropout,
+                                          num_blocks=self.num_blocks, repeat=1)[1]
 
         y = self.output_layer(x_ques)  # batch * seq_len * output_size
 

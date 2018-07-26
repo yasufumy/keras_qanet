@@ -5,7 +5,7 @@ import numpy as np
 from keras.optimizers import Adam
 from keras.callbacks import TensorBoard
 
-from models import DependencyNet, DependencyLSTM
+from models import DependencyQANet, DependencyLSTM
 from data import SquadReader, Iterator, SquadDepConverter, Vocabulary
 from trainer import SquadTrainer, BatchLearningRateScheduler, ExponentialMovingAverage
 from utils import dump_graph
@@ -25,11 +25,11 @@ def main(args):
     epochs = args.epoch  # Number of epochs to train for.
     converter = SquadDepConverter(token_to_index, PAD_TOKEN, UNK_TOKEN)
 
-    if args.model == 'qanet':
-        model = DependencyNet(len(token_to_index), args.embed, len(converter._dep_to_index),
-                              args.hidden, args.num_heads,
-                              dropout=args.dropout, num_blocks=args.encoder_layer,
-                              num_convs=args.encoder_conv, embeddings=embeddings).build()
+    if 'qanet' in args.model:
+        only_conv = 'conv' in args.model
+        model = DependencyQANet(len(token_to_index), args.embed, len(converter._dep_to_index),
+                                args.hidden, args.num_heads, dropout=args.dropout, num_blocks=args.encoder_layer,
+                                num_convs=args.encoder_conv, embeddings=embeddings, only_conv=only_conv).build()
     elif args.model == 'lstm':
         model = DependencyLSTM(len(token_to_index), args.embed, len(converter._dep_to_index),
                                args.hidden, dropout=args.dropout, embeddings=embeddings).build()
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     parser.add_argument('--dev-path', default='./data/train-v1.1_filtered_dev.txt', type=str)
     parser.add_argument('--test-path', default='./data/dev-v1.1_filtered.txt', type=str)
     parser.add_argument('--vocab-file', default='vocab.pkl', type=str)
-    parser.add_argument('--model', default='lstm', choices=['lstm', 'qanet'], type=str)
+    parser.add_argument('--model', default='lstm', choices=['lstm', 'qanet', 'qanet_conv'], type=str)
     parser.add_argument('--use-tensorboard', default=False, action='store_true')
     args = parser.parse_args()
 
