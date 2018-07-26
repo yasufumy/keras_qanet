@@ -5,7 +5,7 @@ from keras.regularizers import l2
 from keras.initializers import VarianceScaling
 from keras.layers import Input, Embedding, Concatenate, Lambda, \
     BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Dropout, Masking, \
-    LSTM, Bidirectional, Dense
+    LSTM, Bidirectional, Dense, SeparableConv2D
 
 from layers import MultiHeadAttention, PositionEmbedding, ContextQueryAttention, \
     LayerDropout
@@ -29,8 +29,9 @@ def conv_block(x, conv_layers, dropout=0., sub_layer=1., last_layer=1.):
         residual = x
         x = BatchNormalization()(x)
         x = Dropout(dropout)(x)
-        x = conv_layers[i][0](x)
-        x = conv_layers[i][1](x)
+        # x = conv_layers[i][0](x)
+        # x = conv_layers[i][1](x)
+        x = conv_layers[i](x)
         x = LayerDropout(dropout * (sub_layer / last_layer))([x, residual])
     x = Lambda(lambda x: tf.squeeze(x, axis=2))(x)
     return x
@@ -100,9 +101,12 @@ class QANet:
         for i in range(encoder_layer_size):
             conv_layers.append([])
             for j in range(encoder_conv_blocks):
-                conv_layers[i].append([
-                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
-                    Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
+                conv_layers[i].append(SeparableConv2D(
+                    filters=filters, kernel_size=(7, 1), padding='same', activation='relu',
+                    depthwise_regularizer=regularizer, pointwise_regularizer=regularizer))
+                # conv_layers[i].append([
+                #     DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
+                #     Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
             self_attention_layer.append([
                 Conv1D(2 * filters, 1, kernel_regularizer=regularizer),  # weights for key and value
                 Conv1D(filters, 1, kernel_regularizer=regularizer),  # weights for query
@@ -122,9 +126,12 @@ class QANet:
         for i in range(output_layer_size):
             conv_layers.append([])
             for j in range(output_conv_blocks):
-                conv_layers[i].append([
-                    DepthwiseConv2D((5, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
-                    Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
+                # conv_layers[i].append([
+                #     DepthwiseConv2D((5, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
+                #     Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
+                conv_layers[i].append(SeparableConv2D(
+                    filters=filters, kernel_size=(7, 1), padding='same', activation='relu',
+                    depthwise_regularizer=regularizer, pointwise_regularizer=regularizer))
             self_attention_layer.append([
                 Conv1D(2 * filters, 1, kernel_regularizer=regularizer),
                 Conv1D(filters, 1, kernel_regularizer=regularizer),
