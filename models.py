@@ -37,13 +37,13 @@ class QANet:
         self.highway = Highway(embed_size, 2, dropout=dropout, regularizer=regularizer)
         self.projection1 = Conv1D(filters, 1, padding='same', activation='linear',
                                   kernel_regularizer=regularizer)
-        self.encoder = Encoder(filters, encoder_num_blocks, encoder_num_convs, num_heads, dropout, regularizer)
+        self.encoder = Encoder(filters, 7, encoder_num_blocks, encoder_num_convs, num_heads, dropout, regularizer)
 
         self.cqattention_layer = ContextQueryAttention(filters * 4, cont_limit, ques_limit, dropout)
         self.projection2 = Conv1D(filters, 1, padding='same', activation='linear',
                                   kernel_regularizer=regularizer)
 
-        self.output_layer = Encoder(filters, output_num_blocks, output_num_convs, num_heads, dropout, regularizer)
+        self.output_layer = Encoder(filters, 5, output_num_blocks, output_num_convs, num_heads, dropout, regularizer)
         self.start_layer = Conv1D(1, 1, activation='linear', kernel_regularizer=regularizer)
         self.end_layer = Conv1D(1, 1, activation='linear', kernel_regularizer=regularizer)
 
@@ -92,8 +92,8 @@ class QANet:
 
 
 class DependencyQANet:
-    def __init__(self, vocab_size, embed_size, output_size, filters=128, num_heads=1,
-                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=2,
+    def __init__(self, vocab_size, embed_size, output_size, filters=128, num_heads=8,
+                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=4,
                  embeddings=None, only_conv=False):
         self.ques_limit = ques_limit
         self.num_blocks = num_blocks
@@ -107,7 +107,7 @@ class DependencyQANet:
         self.highway = Highway(embed_size, 2, dropout=dropout, regularizer=regularizer)
         self.projection = Conv1D(filters, 1, padding='same', activation='linear',
                                  kernel_regularizer=regularizer)
-        self.encoder = Encoder(filters, num_blocks, num_convs, num_heads, dropout, regularizer)
+        self.encoder = Encoder(filters, 7, num_blocks, num_convs, num_heads, dropout, regularizer)
         self.output_layer = Conv1D(output_size, 1, activation='linear', kernel_regularizer=regularizer)
 
     def build(self):
