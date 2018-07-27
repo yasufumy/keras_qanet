@@ -4,7 +4,6 @@ import tensorflow as tf
 from keras import backend as K
 from keras.engine.topology import Layer
 from keras.layers import Conv1D, Lambda, Dropout, SeparableConv1D, BatchNormalization
-from keras.regularizers import l2
 from keras.initializers import VarianceScaling
 
 
@@ -34,7 +33,7 @@ class PositionEmbedding(Layer):
         signal = self.get_timing_signal_1d(length, channels)
         return x + signal
 
-    def call(self, x, mask=None):
+    def call(self, x):
         return self.add_timing_signal_1d(x)
 
     def compute_output_shape(self, input_shape):
@@ -95,7 +94,7 @@ class MultiHeadAttention(Layer):
         logits = tf.matmul(q, k, transpose_b=True)
         logits = self.mask_logits(logits, seq_len)
         weights = tf.nn.softmax(logits)
-        weights = K.in_train_phase(K.dropout(weights, dropout), weights, training=training)
+        weights = K.in_train_phase(tf.nn.dropout(weights, 1 - dropout), weights, training=training)
         return tf.matmul(weights, v)
 
     def mask_logits(self, inputs, mask, mask_value=tf.float32.min):
@@ -112,21 +111,25 @@ class MultiHeadAttention(Layer):
 
 
 class ContextQueryAttention(Layer):
-    def __init__(self, output_size, cont_limit, ques_limit, dropout=0.0, **kwargs):
+    def __init__(self, output_size, cont_limit, ques_limit, dropout, regularizer, **kwargs):
         self.output_size = output_size
         self.cont_limit = cont_limit
         self.ques_limit = ques_limit
         self.dropout = dropout
+        self.regularizer = regularizer
         super().__init__(**kwargs)
 
     def build(self, input_shape):
         # input_shape = [(batch, context_limit, hidden), (batch, question_limit, hidden)]
         self.W0 = self.add_weight(name='W0', trainable=True, shape=(input_shape[0][2], 1),
-                                  initializer='glorot_uniform', regularizer=l2(3e-7))
+                                  initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
+                                  regularizer=self.regularizer)
         self.W1 = self.add_weight(name='W1', trainable=True, shape=(input_shape[1][2], 1),
-                                  initializer='glorot_uniform', regularizer=l2(3e-7))
+                                  initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
+                                  regularizer=self.regularizer)
         self.W2 = self.add_weight(name='W2', trainable=True, shape=(1, 1, input_shape[0][2]),
-                                  initializer='glorot_uniform', regularizer=l2(3e-7))
+                                  initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
+                                  regularizer=self.regularizer)
 
     def apply_mask(self, inputs, seq_len, axis=1, time_dim=1, mode='add'):
         if seq_len is None:
@@ -141,7 +144,7 @@ class ContextQueryAttention(Layer):
             if mode == 'mul':
                 return inputs * mask
 
-    def call(self, inputs, mask=None):
+    def call(self, inputs):
         x_cont, x_ques, cont_len, ques_len = inputs
         S_cont = K.tile(K.dot(x_cont, self.W0), [1, 1, self.ques_limit])
         S_ques = K.tile(K.permute_dimensions(K.dot(x_ques, self.W1), pattern=(0, 2, 1)), [1, self.cont_limit, 1])
@@ -165,7 +168,7 @@ class LayerDropout(Layer):
         self.dropout = dropout
         super().__init__(**kwargs)
 
-    def call(self, inputs, mask=None, training=None):
+    def call(self, inputs, training=None):
         x, residual = inputs
         pred = tf.random_uniform([]) < self.dropout
         x_train = tf.cond(
@@ -188,12 +191,12 @@ class Highway(Layer):
                                 Conv1D(filters, 1, kernel_regularizer=regularizer, activation='relu')])
         self.conv_layers = conv_layers
 
-    def call(self, x):
+    def call(self, x, training=None):
         conv_layers = self.conv_layers
         for i in range(len(conv_layers)):
             T = conv_layers[i][0](x)
             H = conv_layers[i][1](x)
-            H = Dropout(self.dropout)(x)
+            H = Dropout(self.dropout)(x, training=training)
             x = Lambda(lambda inputs: inputs[0] * inputs[1] + inputs[2] * (1 - inputs[1]))([H, T, x])
         return x
 
@@ -225,7 +228,7 @@ class Encoder(Layer):
         self.attention_layers = attention_layers
         self.feedforward_layers = feedforward_layers
 
-    def call(self, inputs):
+    def call(self, inputs, training=None):
         x, seq_len = inputs
         conv_layers = self.conv_layers
         attention_layers = self.attention_layers
@@ -233,27 +236,35 @@ class Encoder(Layer):
         dropout = self.dropout
         num_blocks = self.num_blocks
         num_convs = self.num_convs
+        total_layer = (2 + num_convs) * num_blocks
+        sub_layer = 1
 
         for i in range(num_blocks):
             x = PositionEmbedding()(x)
             # conv
             for j in range(num_convs):
                 residual = x
-                x = BatchNormalization()(x)
-                x = Dropout(dropout)(x)
+                x = BatchNormalization()(x, training=training)
+                if sub_layer % 2 == 0:
+                    x = Dropout(dropout)(x, training=training)
                 x = conv_layers[i][j](x)
-                x = LayerDropout(dropout * (i / num_blocks))([x, residual])
+                x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual], training=training)
+                sub_layer += 1
             # attention
             residual = x
-            x = BatchNormalization()(x)
-            x = Dropout(dropout)(x)
-            x = attention_layers[i]([x, x, x, seq_len])
-            x = LayerDropout(dropout * (i / num_blocks))([x, residual])
+            x = BatchNormalization()(x, training=training)
+            if sub_layer % 2 == 0:
+                x = Dropout(dropout)(x, training=training)
+            x = attention_layers[i]([x, x, x, seq_len], training=training)
+            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual], training=training)
+            sub_layer += 1
             # feed-forward
             residual = x
-            x = BatchNormalization()(x)
-            x = Dropout(dropout)(x)
+            x = BatchNormalization()(x, training=training)
+            if sub_layer % 2 == 0:
+                x = Dropout(dropout)(x, training=training)
             x = feedforward_layers[i][0](x)
             x = feedforward_layers[i][1](x)
-            x = LayerDropout(dropout * (i / num_blocks))([x, residual])
+            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual], training=training)
+            sub_layer += 1
         return x
