@@ -178,15 +178,20 @@ class LayerDropout(Layer):
 
 
 class Highway(Layer):
-    def __init__(self, output_dim, num_layers, regularizer=None, dropout=0.):
+    def __init__(self, output_dim, num_layers, regularizer=None, dropout=0., **kwargs):
+        super().__init__(**kwargs)
+
         self.dropout = dropout
+        self.output_dim = output_dim
+        self.squeeze_layer = Conv1D(output_dim, 1, kernel_regularizer=regularizer, activation='linear')
         conv_layers = []
         for i in range(num_layers):
             conv_layers.append([Conv1D(output_dim, 1, kernel_regularizer=regularizer, activation='sigmoid'),
                                 Conv1D(output_dim, 1, kernel_regularizer=regularizer, activation='linear')])
         self.conv_layers = conv_layers
 
-    def call(self, x, training):
+    def call(self, x):
+        x = self.squeeze_layer(x)
         conv_layers = self.conv_layers
         for i in range(len(conv_layers)):
             T = conv_layers[i][0](x)
@@ -194,3 +199,7 @@ class Highway(Layer):
             H = Dropout(self.dropout)(x)
             x = Lambda(lambda inputs: inputs[0] * inputs[1] + inputs[2] * (1 - inputs[1]))([H, T, x])
         return x
+
+    def compute_output_shape(self, input_shape):
+        output_shape = input_shape[:-1] + (self.output_dim,)
+        return output_shape
