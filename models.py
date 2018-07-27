@@ -39,7 +39,7 @@ class QANet:
                                   kernel_regularizer=regularizer)
         self.encoder = Encoder(filters, 7, encoder_num_blocks, encoder_num_convs, num_heads, dropout, regularizer)
 
-        self.cqattention_layer = ContextQueryAttention(filters * 4, cont_limit, ques_limit, dropout)
+        self.coattention = ContextQueryAttention(filters * 4, cont_limit, ques_limit, dropout, regularizer)
         self.projection2 = Conv1D(filters, 1, padding='same', activation='linear',
                                   kernel_regularizer=regularizer)
 
@@ -68,7 +68,7 @@ class QANet:
         x_ques = self.projection1(x_ques)
         x_ques = self.encoder([x_ques, ques_len])
 
-        x, S_bar, S_T = self.cqattention_layer([x_cont, x_ques, cont_len, ques_len])
+        x, S_bar, S_T = self.coattention([x_cont, x_ques, cont_len, ques_len])
         x = self.projection2(x)
 
         outputs = []
@@ -93,20 +93,18 @@ class QANet:
 
 class DependencyQANet:
     def __init__(self, vocab_size, embed_size, output_size, filters=128, num_heads=8,
-                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=4,
-                 embeddings=None, only_conv=False):
+                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=4, embeddings=None):
         self.ques_limit = ques_limit
         self.num_blocks = num_blocks
         self.num_convs = num_convs
         self.dropout = dropout
-        self.only_conv = only_conv
         if embeddings is not None:
             embeddings = [embeddings]
         self.embed_layer = Embedding(
             vocab_size, embed_size, weights=embeddings, trainable=False)
         self.highway = Highway(embed_size, 2, dropout=dropout, regularizer=regularizer)
-        self.projection = Conv1D(filters, 1, padding='same', activation='linear',
-                                 kernel_regularizer=regularizer)
+        self.projection = Conv1D(
+            filters, 1, activation='linear', kernel_regularizer=regularizer)
         self.encoder = Encoder(filters, 7, num_blocks, num_convs, num_heads, dropout, regularizer)
         self.output_layer = Conv1D(output_size, 1, activation='linear', kernel_regularizer=regularizer)
 
