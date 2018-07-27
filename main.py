@@ -27,9 +27,9 @@ def main(args):
     epochs = args.epoch  # Number of epochs to train for.
 
     model = QANet(len(token_to_index), args.embed, args.hidden, args.num_heads,
-                  dropout=args.dropout, encoder_layer_size=args.encoder_layer,
-                  encoder_conv_blocks=args.encoder_conv, output_layer_size=args.output_layer,
-                  output_conv_blocks=args.output_conv, embeddings=embeddings).build()
+                  dropout=args.dropout, encoder_num_blocks=args.encoder_layer,
+                  encoder_num_convs=args.encoder_conv, output_num_blocks=args.output_layer,
+                  output_num_convs=args.output_conv, embeddings=embeddings).build()
     opt = Adam(lr=0.001, beta_1=0.8, beta_2=0.999, epsilon=1e-7, clipnorm=5.)
     model.compile(optimizer=opt,
                   loss=['sparse_categorical_crossentropy',
