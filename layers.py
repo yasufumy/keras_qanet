@@ -199,7 +199,7 @@ class Highway(Layer):
 
 
 class Encoder(Layer):
-    def __init__(self, filters, filter_size, num_blocks, num_convs, num_heads, dropout, regularizer, **kwargs):
+    def __init__(self, filters, kernel_size, num_blocks, num_convs, num_heads, dropout, regularizer, **kwargs):
         super().__init__(**kwargs)
 
         conv_layers = []
@@ -208,13 +208,12 @@ class Encoder(Layer):
         for i in range(num_blocks):
             conv_layers.append([])
             for j in range(num_convs):
-                conv_layers[i].append(SeparableConv2D(
-                    filters=filters, kernel_size=(filter_size, 1), padding='same', activation='relu',
-                    depthwise_regularizer=regularizer, pointwise_regularizer=regularizer))
-            attention_layers.append([
-                Conv1D(2 * filters, 1, kernel_regularizer=regularizer),
-                Conv1D(filters, 1, kernel_regularizer=regularizer),
-                MultiHeadAttention(filters, num_heads)])
+                conv_layers[i].append(SeparableConv1D(
+                    filters, kernel_size, padding='same', activation='relu',
+                    depthwise_regularizer=regularizer, pointwise_regularizer=regularizer,
+                    bias_regularizer=regularizer, activity_regularizer=regularizer))
+            attention_layers.append(
+                MultiHeadAttention(filters, num_heads, dropout, regularizer))
             feedforward_layers.append([
                 Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
                 Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
@@ -237,7 +236,6 @@ class Encoder(Layer):
 
         for i in range(num_blocks):
             x = PositionEmbedding()(x)
-            x = Lambda(lambda x: tf.expand_dims(x, axis=2))(x)
             # conv
             for j in range(num_convs):
                 residual = x
@@ -245,14 +243,11 @@ class Encoder(Layer):
                 x = Dropout(dropout)(x)
                 x = conv_layers[i][j](x)
                 x = LayerDropout(dropout * (i / num_blocks))([x, residual])
-            x = Lambda(lambda x: tf.squeeze(x, axis=2))(x)
             # attention
             residual = x
             x = BatchNormalization()(x)
             x = Dropout(dropout)(x)
-            key_and_value = attention_layers[i][0](x)
-            query = attention_layers[i][1](x)
-            x = attention_layers[i][2]([key_and_value, query, seq_len])
+            x = attention_layers[i]([x, x, x, seq_len])
             x = LayerDropout(dropout * (i / num_blocks))([x, residual])
             # feed-forward
             residual = x
