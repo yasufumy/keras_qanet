@@ -189,7 +189,7 @@ class QANet:
         x_end = Lambda(lambda x: mask_logits(x[0], x[1], axis=0, time_dim=1))([x_end, cont_len])
         x_end = Lambda(lambda x: K.softmax(x), name='end')(x_end)  # batch * seq_len
 
-        return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end, S_bar, S_T])
+        return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end])
 
 
 def encoder_block_simple(x, conv_layers, ffn_layer, seq_len, dropout,
