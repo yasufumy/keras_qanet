@@ -185,7 +185,7 @@ class Highway(Layer):
         conv_layers = []
         for i in range(num_layers):
             conv_layers.append([Conv1D(filters, 1, kernel_regularizer=regularizer, activation='sigmoid'),
-                                Conv1D(filters, 1, kernel_regularizer=regularizer, activation='linear')])
+                                Conv1D(filters, 1, kernel_regularizer=regularizer, activation='relu')])
         self.conv_layers = conv_layers
 
     def call(self, x):
@@ -199,7 +199,7 @@ class Highway(Layer):
 
 
 class Encoder(Layer):
-    def __init__(self, filters, num_blocks, num_convs, num_heads, dropout, regularizer, **kwargs):
+    def __init__(self, filters, filter_size, num_blocks, num_convs, num_heads, dropout, regularizer, **kwargs):
         super().__init__(**kwargs)
 
         conv_layers = []
@@ -209,7 +209,7 @@ class Encoder(Layer):
             conv_layers.append([])
             for j in range(num_convs):
                 conv_layers[i].append(SeparableConv2D(
-                    filters=filters, kernel_size=(7, 1), padding='same', activation='relu',
+                    filters=filters, kernel_size=(filter_size, 1), padding='same', activation='relu',
                     depthwise_regularizer=regularizer, pointwise_regularizer=regularizer))
             attention_layers.append([
                 Conv1D(2 * filters, 1, kernel_regularizer=regularizer),
