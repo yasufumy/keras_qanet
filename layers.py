@@ -3,8 +3,9 @@ import math
 import tensorflow as tf
 from keras import backend as K
 from keras.engine.topology import Layer
-from keras.layers import Conv1D, Lambda, Dropout, SeparableConv2D, BatchNormalization
+from keras.layers import Conv1D, Lambda, Dropout, SeparableConv1D, BatchNormalization
 from keras.regularizers import l2
+from keras.initializers import VarianceScaling
 
 
 class PositionEmbedding(Layer):
@@ -41,30 +42,61 @@ class PositionEmbedding(Layer):
 
 
 class MultiHeadAttention(Layer):
-    def __init__(self, hidden_size, num_heads, dropout=0.0, bias=False, **kwargs):
-        self.hidden_size = hidden_size
+    def __init__(self, input_dim, num_heads, dropout, regularizer, **kwargs):
+        super().__init__(**kwargs)
+        self.input_dim = input_dim
         self.num_heads = num_heads
         self.dropout = dropout
-        self.bias = bias
-        super().__init__(**kwargs)
+        self.regularizer = regularizer
+        self.d = input_dim // num_heads
 
     def build(self, input_shape):
-        if self.bias:
-            self.b = self.add_weight(
-                name='bias', shape=(input_shape[0][-2],), initializer='zero')
+        self.W_Q = self.add_weight(
+            'W_Q', [self.input_dim, self.input_dim], trainable=True,
+            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
+            regularizer=self.regularizer)
+        self.W_K = self.add_weight(
+            'W_K', [self.input_dim, self.input_dim], trainable=True,
+            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
+            regularizer=self.regularizer)
+        self.W_V = self.add_weight(
+            'W_V', [self.input_dim, self.input_dim], trainable=True,
+            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
+            regularizer=self.regularizer)
+        self.W_O = self.add_weight(
+            'W_O', [self.input_dim, self.input_dim], trainable=True,
+            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
+            regularizer=self.regularizer)
 
-        super().build(input_shape)
+    def call(self, inputs, training=None):
+        q, k, v, seq_len = inputs
 
-    def split_last_dim(self, x, n):
-        old_shape = x.get_shape().dims  # batch_size * seq_len * hidden_size
-        last = old_shape[-1]  # last shape should be hidden dimension
-        # batch_size * seq_len * heads * hidden_size // heads
-        new_shape = old_shape[:-1] + [n] + [last // n if last else None]
-        # reshape batch_size * seq_len * heads * hidden_size // heads
-        ret = tf.reshape(x, tf.concat([tf.shape(x)[:-1], [n, -1]], 0))
-        ret.set_shape(new_shape)
-        # reshape batch_size * heads * seq_len * hidden_size // heads
-        return tf.transpose(ret, [0, 2, 1, 3])
+        q = self.split_heads(K.dot(q, self.W_Q), self.num_heads)
+        k = self.split_heads(K.dot(k, self.W_K), self.num_heads)
+        v = self.split_heads(K.dot(v, self.W_V), self.num_heads)
+
+        scale = self.d ** (1/2)
+        q *= scale
+        x = self.dot_product_attention(q, k, v, seq_len, self.dropout, training)
+        x = self.combine_heads(x)
+        return K.dot(x, self.W_O)
+
+    def split_heads(self, x, n):
+        shape = x.shape.as_list()
+        splitted = tf.reshape(x, [-1] + shape[1:-1] + [n, shape[-1] // n])
+        return tf.transpose(splitted, [0, 2, 1, 3])
+
+    def combine_heads(self, x):
+        x = tf.transpose(x, [0, 2, 1, 3])
+        shape = x.shape.as_list()
+        return tf.reshape(x, [-1] + shape[1:-2] + [shape[-2] * shape[-1]])
+
+    def dot_product_attention(self, q, k, v, seq_len, dropout=.1, training=None):
+        logits = tf.matmul(q, k, transpose_b=True)
+        logits = self.mask_logits(logits, seq_len)
+        weights = tf.nn.softmax(logits)
+        weights = K.in_train_phase(K.dropout(weights, dropout), weights, training=training)
+        return tf.matmul(weights, v)
 
     def mask_logits(self, inputs, mask, mask_value=tf.float32.min):
         shapes = [x if x is not None else -1 for x in inputs.shape.as_list()]
@@ -74,38 +106,6 @@ class MultiHeadAttention(Layer):
         mask = tf.cast(mask, tf.float32)
         mask = tf.reshape(mask, [shapes[0], 1, 1, shapes[-1]])
         return inputs + mask_value * (1 - mask)
-
-    def dot_product_attention(self, x, seq_len=None, dropout=.1, training=None):
-        q, k, v = x
-        logits = tf.matmul(q, k, transpose_b=True)
-        if self.bias:
-            logits += self.b
-        if seq_len is not None:
-            logits = self.mask_logits(logits, seq_len)
-        weights = tf.nn.softmax(logits)
-        weights = K.in_train_phase(K.dropout(weights, dropout), weights, training=training)
-        return tf.matmul(weights, v)
-
-    def combine_last_two_dims(self, x):
-        old_shape = x.get_shape().dims
-        a, b = old_shape[-2:]
-        new_shape = old_shape[:-2] + [a * b if a and b else None]
-        ret = tf.reshape(x, tf.concat([tf.shape(x)[:-2], [-1]], 0))
-        ret.set_shape(new_shape)
-        return ret
-
-    def call(self, x, mask=None, training=None):
-        key_and_value, query, seq_len = x
-        Q = self.split_last_dim(query, self.num_heads)
-        key, value = tf.split(key_and_value, 2, axis=2)
-        K = self.split_last_dim(key, self.num_heads)
-        V = self.split_last_dim(value, self.num_heads)
-
-        scale = (self.hidden_size // self.num_heads) ** (1/2)
-        Q *= scale
-        x = self.dot_product_attention([Q, K, V], seq_len, dropout=self.dropout, training=training)
-        x = self.combine_last_two_dims(tf.transpose(x, [0, 2, 1, 3]))
-        return x
 
     def compute_output_shape(self, input_shape):
         return input_shape[1]
