@@ -8,7 +8,7 @@ from keras.layers import Input, Embedding, Concatenate, Lambda, \
     LSTM, Bidirectional, Dense, SeparableConv2D
 
 from layers import MultiHeadAttention, PositionEmbedding, ContextQueryAttention, \
-    LayerDropout, Highway
+    LayerDropout, Highway, Encoder
 
 
 regularizer = l2(3e-7)
@@ -219,35 +219,13 @@ class DependencyQANet:
             embeddings = [embeddings]
         self.embed_layer = Embedding(
             vocab_size, embed_size, weights=embeddings, trainable=False)
-        self.highway = Highway(filters, 2, dropout=dropout, regularizer=regularizer)
-        conv_layers = []
-        self_attention_layer = []
-        ffn_layer = []
-        for i in range(num_blocks):
-            conv_layers.append([])
-            for j in range(num_convs):
-                # conv_layers[i].append([
-                #     DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
-                #     Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
-                conv_layers[i].append(SeparableConv2D(
-                    filters=filters, kernel_size=(7, 1), padding='same', activation='relu',
-                    depthwise_regularizer=regularizer, pointwise_regularizer=regularizer))
-            if not only_conv:
-                self_attention_layer.append([
-                    Conv1D(2 * filters, 1, kernel_regularizer=regularizer),  # weights for key and value
-                    Conv1D(filters, 1, kernel_regularizer=regularizer),  # weights for query
-                    MultiHeadAttention(filters, num_heads)])
-            ffn_layer.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
-                              Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
-        self.conv_layers = conv_layers
-        self.self_attention_layer = self_attention_layer
-        self.ffn_layer = ffn_layer
-
+        self.highway = Highway(embed_size, 2, dropout=dropout, regularizer=regularizer)
+        self.projection = Conv1D(filters, 1, padding='same', activation='linear',
+                                 kernel_regularizer=regularizer)
+        self.encoder = Encoder(filters, num_blocks, num_convs, num_heads, dropout, regularizer)
         self.output_layer = Conv1D(output_size, 1, activation='linear', kernel_regularizer=regularizer)
 
     def build(self):
-        dropout = self.dropout
-
         ques_input = Input((self.ques_limit,))
 
         # mask
@@ -257,14 +235,8 @@ class DependencyQANet:
         # encoding each
         x_ques = self.embed_layer(ques_input)
         x_ques = self.highway(x_ques)
-        if not self.only_conv:
-            x_ques = encoder_block(x_ques, self.conv_layers, self.self_attention_layer,
-                                   self.ffn_layer, ques_len, dropout,
-                                   num_blocks=self.num_blocks, repeat=1)[1]
-        else:
-            x_ques = encoder_block_simple(x_ques, self.conv_layers,
-                                          self.ffn_layer, ques_len, dropout,
-                                          num_blocks=self.num_blocks, repeat=1)[1]
+        x_ques = self.projection(x_ques)
+        x_ques = self.encoder([x_ques, ques_len])
 
         y = self.output_layer(x_ques)  # batch * seq_len * output_size
 
