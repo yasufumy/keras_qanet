@@ -33,7 +33,7 @@ def main(args):
     opt = Adam(lr=0.001, beta_1=0.8, beta_2=0.999, epsilon=1e-7, clipnorm=5.)
     model.compile(optimizer=opt,
                   loss=['sparse_categorical_crossentropy',
-                        'sparse_categorical_crossentropy', None, None], loss_weights=[1, 1, 0, 0])
+                        'sparse_categorical_crossentropy'], loss_weights=[1, 1])
     train_dataset = SquadReader(args.train_path)
     dev_dataset = SquadReader(args.dev_path)
     converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN, lower=args.lower)

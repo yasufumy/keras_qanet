@@ -60,7 +60,7 @@ def dump_graph(history, filename):
 def evaluate(model, test_generator, metric, index_to_token, answer_limit=30):
     count = 0
     for inputs, answer in test_generator:
-        start_scores, end_scores, S_bar, S_T = model.predict_on_batch(inputs)
+        start_scores, end_scores = model.predict_on_batch(inputs)
         scores = tf.matmul(tf.expand_dims(start_scores, axis=2),
                            tf.expand_dims(end_scores, axis=1))
         scores = tf.matrix_band_part(scores, 0, answer_limit)
