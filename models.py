@@ -219,7 +219,7 @@ class DependencyQANet:
             embeddings = [embeddings]
         self.embed_layer = Embedding(
             vocab_size, embed_size, weights=embeddings, trainable=False)
-        self.highway = Highway(filters, dropout=dropout, regularizer=regularizer)
+        self.highway = Highway(filters, 2, dropout=dropout, regularizer=regularizer)
         conv_layers = []
         self_attention_layer = []
         ffn_layer = []
