@@ -3,6 +3,7 @@ import math
 import tensorflow as tf
 from keras import backend as K
 from keras.engine.topology import Layer
+from keras.layers import Conv1D, Lambda, Dropout
 from keras.regularizers import l2
 
 
@@ -174,3 +175,22 @@ class LayerDropout(Layer):
 
     def compute_output_shape(self, input_shape):
         return input_shape
+
+
+class Highway(Layer):
+    def __init__(self, output_dim, num_layers, regularizer=None, dropout=0.):
+        self.dropout = dropout
+        conv_layers = []
+        for i in range(num_layers):
+            conv_layers.append([Conv1D(output_dim, 1, kernel_regularizer=regularizer, activation='sigmoid'),
+                                Conv1D(output_dim, 1, kernel_regularizer=regularizer, activation='linear')])
+        self.conv_layers = conv_layers
+
+    def call(self, x, training):
+        conv_layers = self.conv_layers
+        for i in range(len(conv_layers)):
+            T = conv_layers[i][0](x)
+            H = conv_layers[i][1](x)
+            H = Dropout(self.dropout)(x)
+            x = Lambda(lambda inputs: inputs[0] * inputs[1] + inputs[2] * (1 - inputs[1]))([H, T, x])
+        return x
