@@ -5,10 +5,10 @@ from keras.regularizers import l2
 from keras.initializers import VarianceScaling
 from keras.layers import Input, Embedding, Concatenate, Lambda, \
     BatchNormalization, DepthwiseConv2D, Conv1D, Conv2D, Dropout, Masking, \
-    LSTM, Bidirectional, Dense
+    LSTM, Bidirectional, Dense, SeparableConv1D
 
 from layers import MultiHeadAttention, PositionEmbedding, ContextQueryAttention, \
-    LayerDropout
+    LayerDropout, Highway
 
 
 regularizer = l2(3e-7)
@@ -24,15 +24,12 @@ def squeeze_block(x, squeeze_layer, dropout=0.):
 
 def conv_block(x, conv_layers, dropout=0., sub_layer=1., last_layer=1.):
     n_conv = len(conv_layers)
-    x = Lambda(lambda x: tf.expand_dims(x, axis=2))(x)
     for i in range(n_conv):
         residual = x
         x = BatchNormalization()(x)
         x = Dropout(dropout)(x)
-        x = conv_layers[i][0](x)
-        x = conv_layers[i][1](x)
+        x = conv_layers[i](x)
         x = LayerDropout(dropout * (sub_layer / last_layer))([x, residual])
-    x = Lambda(lambda x: tf.squeeze(x, axis=2))(x)
     return x
 
 
@@ -40,9 +37,9 @@ def attention_block(x, attention_layer, seq_len, dropout=0., sub_layer=1., last_
     residual = x
     x = BatchNormalization()(x)
     x = Dropout(dropout)(x)
-    key_and_value = attention_layer[0](x)
-    query = attention_layer[1](x)
-    x = attention_layer[2]([key_and_value, query, seq_len])
+    # key_and_value = attention_layer[0](x)
+    # query = attention_layer[1](x)
+    x = attention_layer[0]([x, x, x, seq_len])
     return LayerDropout(dropout * (sub_layer / last_layer))([x, residual])
 
 
@@ -101,8 +98,10 @@ class QANet:
             conv_layers.append([])
             for j in range(encoder_conv_blocks):
                 conv_layers[i].append([
-                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
-                    Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
+                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1,
+                                    kernel_regularizer=regularizer, activation='relu'),
+                    Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)
+                ])
             self_attention_layer.append([
                 Conv1D(2 * filters, 1, kernel_regularizer=regularizer),  # weights for key and value
                 Conv1D(filters, 1, kernel_regularizer=regularizer),  # weights for query
@@ -147,6 +146,7 @@ class QANet:
         # mask
         c_mask = Lambda(lambda x: tf.cast(x, tf.bool))(cont_input)
         q_mask = Lambda(lambda x: tf.cast(x, tf.bool))(ques_input)
+        # (batch, 1)
         cont_len = Lambda(lambda x: tf.expand_dims(tf.reduce_sum(tf.cast(x, tf.int32), axis=1), axis=1))(c_mask)
         ques_len = Lambda(lambda x: tf.expand_dims(tf.reduce_sum(tf.cast(x, tf.int32), axis=1), axis=1))(q_mask)
 
@@ -170,16 +170,23 @@ class QANet:
                                 self.ffn_layer2, cont_len, dropout,
                                 num_blocks=self.output_layer_size, repeat=3)
 
+        def mask_sequence(x, mask, mask_value=tf.float32.min, axis=1):
+            # x: (batch, cont_len)
+            maxlen = x.shape.as_list()[-1]
+            # mask: (batch, cont_len)
+            mask = tf.squeeze(tf.sequence_mask(mask, maxlen=maxlen, dtype=tf.float32), axis=1)
+            return x + mask_value * (1 - mask)
+
         x_start = Concatenate()([outputs[1], outputs[2]])
         x_start = self.start_layer(x_start)
         x_start = Lambda(lambda x: tf.squeeze(x, axis=-1))(x_start)
-        x_start = Lambda(lambda x: mask_logits(x[0], x[1], axis=0, time_dim=1))([x_start, cont_len])
+        x_start = Lambda(lambda x: mask_sequence(x[0], x[1]))([x_start, cont_len])
         x_start = Lambda(lambda x: K.softmax(x), name='start')(x_start)
 
         x_end = Concatenate()([outputs[1], outputs[3]])
         x_end = self.end_layer(x_end)  # batch * seq_len * 1
         x_end = Lambda(lambda x: tf.squeeze(x, axis=-1))(x_end)
-        x_end = Lambda(lambda x: mask_logits(x[0], x[1], axis=0, time_dim=1))([x_end, cont_len])
+        x_end = Lambda(lambda x: mask_sequence(x[0], x[1]))([x_end, cont_len])
         x_end = Lambda(lambda x: K.softmax(x), name='end')(x_end)  # batch * seq_len
 
         return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end, S_bar, S_T])
@@ -207,26 +214,24 @@ class DependencyQANet:
         self.num_blocks = num_blocks
         self.num_convs = num_convs
         self.dropout = dropout
-        self.only_conv = only_conv
         if embeddings is not None:
             embeddings = [embeddings]
         self.embed_layer = Embedding(
             vocab_size, embed_size, weights=embeddings, trainable=False)
-        self.e2h_squeeze_layer = Conv1D(filters, 1)
+        self.highway = Highway(embed_size, 2, regularizer=regularizer, dropout=dropout)
+        self.projection = Conv1D(filters, 1, kernel_regularizer=regularizer, activation='linear')
         conv_layers = []
         self_attention_layer = []
         ffn_layer = []
         for i in range(num_blocks):
             conv_layers.append([])
             for j in range(num_convs):
-                conv_layers[i].append([
-                    DepthwiseConv2D((7, 1), padding='same', depth_multiplier=1, kernel_regularizer=regularizer),
-                    Conv2D(filters, 1, padding='same', kernel_regularizer=regularizer)])
-            if not only_conv:
-                self_attention_layer.append([
-                    Conv1D(2 * filters, 1, kernel_regularizer=regularizer),  # weights for key and value
-                    Conv1D(filters, 1, kernel_regularizer=regularizer),  # weights for query
-                    MultiHeadAttention(filters, num_heads)])
+                conv_layers[i].append(
+                    SeparableConv1D(filters, 7, padding='same', depthwise_regularizer=regularizer,
+                                    pointwise_regularizer=regularizer, activation='relu',
+                                    bias_regularizer=regularizer, activity_regularizer=regularizer))
+            self_attention_layer.append([
+                MultiHeadAttention(filters, num_heads, dropout, regularizer)])
             ffn_layer.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
                               Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
         self.conv_layers = conv_layers
@@ -242,28 +247,27 @@ class DependencyQANet:
 
         # mask
         q_mask = Lambda(lambda x: tf.cast(x, tf.bool))(ques_input)
+        # ques_len: (batch, 1)
         ques_len = Lambda(lambda x: tf.expand_dims(tf.reduce_sum(tf.cast(x, tf.int32), axis=1), axis=1))(q_mask)
 
         # encoding each
         x_ques = self.embed_layer(ques_input)
-        x_ques = squeeze_block(x_ques, self.e2h_squeeze_layer, dropout)
-        if not self.only_conv:
-            x_ques = encoder_block(x_ques, self.conv_layers, self.self_attention_layer,
-                                   self.ffn_layer, ques_len, dropout,
-                                   num_blocks=self.num_blocks, repeat=1)[1]
-        else:
-            x_ques = encoder_block_simple(x_ques, self.conv_layers,
-                                          self.ffn_layer, ques_len, dropout,
-                                          num_blocks=self.num_blocks, repeat=1)[1]
+        x_ques = self.highway(x_ques)
+        x_ques = self.projection(x_ques)
+        x_ques = encoder_block(x_ques, self.conv_layers, self.self_attention_layer,
+                               self.ffn_layer, ques_len, dropout,
+                               num_blocks=self.num_blocks, repeat=1)[1]
 
         y = self.output_layer(x_ques)  # batch * seq_len * output_size
 
         def mask_sequence(x, length):
+            # x: (batch, seq_len, output_size)
             mask = tf.expand_dims(tf.sequence_mask(
                 tf.squeeze(length, axis=1), maxlen=self.ques_limit, dtype=tf.float32), dim=2)
+            # mask: (batch, seq_len, 1)
             return x * mask
 
-        y = Lambda(lambda x: K.softmax(x), name='end')(y)  # batch * seq_len
+        y = Lambda(lambda x: tf.nn.softmax(x, axis=-1), name='end')(y)  # batch * seq_len * output_size
         y = Lambda(lambda x: mask_sequence(x[0], x[1]))([y, ques_len])
         y = Masking(mask_value=0.)(y)
 
