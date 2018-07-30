@@ -92,8 +92,9 @@ class MultiHeadAttention(Layer):
 
     def dot_product_attention(self, q, k, v, seq_len, dropout=.1, training=None):
         logits = tf.matmul(q, k, transpose_b=True)
-        logits = self.mask_logits(logits, seq_len)
-        weights = tf.nn.softmax(logits, axis=-1)
+        # logits = self.mask_logits(logits, seq_len)
+        # weights = tf.nn.softmax(logits, axis=-1)
+        weights = self.masked_softmax(logits, seq_len, axis=-1)
         weights = K.in_train_phase(tf.nn.dropout(weights, 1 - dropout), weights, training=training)
         return tf.matmul(weights, v)
 
@@ -111,6 +112,15 @@ class MultiHeadAttention(Layer):
         mask = tf.where(tf.is_nan(mask), x=tf.zeros_like(mask), y=mask)
         # mask = tf.expand_dims(mask, axis=1)
         return x + mask_value * (1 - mask)
+
+    def masked_softmax(self, x, mask, axis=-1, mask_value=tf.float32.min):
+        maxlen = x.shape.as_list()[-1]
+        # mask: (batch, 1, seq_len)
+        mask = tf.sequence_mask(mask, maxlen=maxlen, dtype=tf.float32)
+        mask = tf.expand_dims(tf.matmul(mask, mask, transpose_a=True), axis=1)  # (batch, 1, seq_len, seq_len)
+        x = x + (1 - mask) * mask_value
+        weights = tf.nn.softmax(x, axis=axis)
+        return weights * mask
 
     def compute_output_shape(self, input_shape):
         return input_shape[1]
