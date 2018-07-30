@@ -105,8 +105,10 @@ class MultiHeadAttention(Layer):
         # mask = tf.cast(mask, tf.float32)
         # mask = tf.reshape(mask, [shapes[0], 1, 1, shapes[-1]])
         maxlen = x.shape.as_list()[-1]
-        mask = tf.expand_dims(tf.sequence_mask(mask, maxlen=maxlen, dtype=tf.float32), axis=-1)
-        mask = tf.expand_dims(tf.matmul(mask, mask, transpose_b=True), axis=1)  # (batch, 1, seq_len, seq_len)
+        # mask: (batch, 1, seq_len)
+        mask = tf.sequence_mask(mask, maxlen=maxlen, dtype=tf.float32)
+        # mask = tf.expand_dims(tf.matmul(mask, mask, transpose_a=True), axis=1)  # (batch, 1, seq_len, seq_len)
+        mask = tf.expand_dims(mask, axis=1)
         return x + mask_value * (1 - mask)
 
     def compute_output_shape(self, input_shape):
