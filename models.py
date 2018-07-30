@@ -208,8 +208,7 @@ def encoder_block_simple(x, conv_layers, ffn_layer, seq_len, dropout,
 
 class DependencyQANet:
     def __init__(self, vocab_size, embed_size, output_size, filters=128, num_heads=1,
-                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=2,
-                 embeddings=None, only_conv=False):
+                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=2, embeddings=None):
         self.ques_limit = ques_limit
         self.num_blocks = num_blocks
         self.num_convs = num_convs
@@ -260,10 +259,12 @@ class DependencyQANet:
 
         y = self.output_layer(x_ques)  # batch * seq_len * output_size
 
-        def mask_sequence(x, length):
+        def mask_sequence(x, mask):
             # x: (batch, seq_len, output_size)
-            mask = tf.expand_dims(tf.sequence_mask(
-                tf.squeeze(length, axis=1), maxlen=self.ques_limit, dtype=tf.float32), dim=2)
+            # mask: (batch, 1)
+            mask = tf.transpose(
+                tf.sequence_mask(mask, maxlen=self.ques_limit, dtype=tf.float32),
+                [0, 2, 1])
             # mask: (batch, seq_len, 1)
             return x * mask
 
