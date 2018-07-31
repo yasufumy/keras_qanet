@@ -53,17 +53,36 @@ def ffn_block(x, ffn_layer, dropout=0., sub_layer=1., last_layer=1.):
 
 
 def encoder_block(x, conv_layers, attention_layer, ffn_layer, seq_len, dropout,
-                  num_blocks, repeat=1):
-    outputs = [x]
-    for _ in range(repeat):
-        x = outputs[-1]
-        for j in range(num_blocks):
-            x = PositionEmbedding()(x)
-            x = conv_block(x, conv_layers[j], dropout, j, num_blocks)
-            x = attention_block(x, attention_layer[j], seq_len, dropout, j, num_blocks)
-            x = ffn_block(x, ffn_layer[j], dropout, j, num_blocks)
-        outputs.append(x)
-    return outputs
+                  num_blocks):
+    num_convs = len(conv_layers[0])
+    total_layer = (2 + num_convs) * num_blocks
+    sub_layer = 1
+
+    for i in range(num_blocks):
+        x = PositionEmbedding()(x)
+        for j in range(num_convs):
+            residual = x
+            x = BatchNormalization()(x)
+            if sub_layer % 2 == 0:
+                x = Dropout(dropout)(x)
+            x = conv_layers[i][j](x)
+            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
+            sub_layer += 1
+        residual = x
+        x = BatchNormalization()(x)
+        if sub_layer % 2 == 0:
+            x = Dropout(dropout)(x)
+        x = attention_layer[i]([x, x, x, seq_len])
+        x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
+        residual = x
+        x = BatchNormalization()(x)
+        if sub_layer % 2 == 0:
+            x = Dropout(dropout)(x)
+        x = ffn_layer[i][0](x)
+        x = ffn_layer[i][1](x)
+        x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
+        sub_layer += 1
+    return x
 
 
 def mask_logits(inputs, mask, mask_value=tf.float32.min, axis=1, time_dim=1):
@@ -192,18 +211,66 @@ class QANet:
         return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end, S_bar, S_T])
 
 
-def encoder_block_simple(x, conv_layers, ffn_layer, seq_len, dropout,
-                         num_blocks, repeat=1, position=False):
-    outputs = [x]
-    for _ in range(repeat):
-        x = outputs[-1]
-        for j in range(num_blocks):
-            if position:
-                x = PositionEmbedding()(x)
-            x = conv_block(x, conv_layers[j], dropout, j, num_blocks)
-            x = ffn_block(x, ffn_layer[j], dropout, j, num_blocks)
-        outputs.append(x)
-    return outputs
+class Encoder:
+    def __init__(self, filters, kernel_size, num_blocks, num_convs, num_heads,
+                 dropout, regularizer, **kwargs):
+        conv_layers = []
+        attention_layers = []
+        feedforward_layers = []
+        for i in range(num_blocks):
+            conv_layers.append([])
+            for j in range(num_convs):
+                conv_layers[i].append(
+                    SeparableConv1D(filters, 7, padding='same', depthwise_regularizer=regularizer,
+                                    pointwise_regularizer=regularizer, activation='relu',
+                                    bias_regularizer=regularizer, activity_regularizer=regularizer))
+            attention_layers.append(
+                MultiHeadAttention(filters, num_heads, dropout, regularizer))
+            feedforward_layers.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
+                                       Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
+
+        self.conv_layers = conv_layers
+        self.attention_layers = attention_layers
+        self.feedforward_layers = feedforward_layers
+        self.num_blocks = num_blocks
+        self.num_convs = num_convs
+        self.dropout = dropout
+
+    def __call__(self, x, seq_len):
+        conv_layers = self.conv_layers
+        attention_layers = self.attention_layers
+        feedforward_layers = self.feedforward_layers
+        num_blocks = self.num_blocks
+        num_convs = self.num_convs
+        dropout = self.dropout
+        total_layer = (2 + num_convs) * num_blocks
+        sub_layer = 1
+
+        for i in range(num_blocks):
+            x = PositionEmbedding()(x)
+            for j in range(num_convs):
+                residual = x
+                x = BatchNormalization()(x)
+                if sub_layer % 2 == 0:
+                    x = Dropout(dropout)(x)
+                x = conv_layers[i][j](x)
+                x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
+                sub_layer += 1
+            residual = x
+            x = BatchNormalization()(x)
+            if sub_layer % 2 == 0:
+                x = Dropout(dropout)(x)
+            x = attention_layers[i]([x, x, x, seq_len])
+            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
+            residual = x
+            x = BatchNormalization()(x)
+            if sub_layer % 2 == 0:
+                x = Dropout(dropout)(x)
+            x = feedforward_layers[i][0](x)
+            x = feedforward_layers[i][1](x)
+            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
+            sub_layer += 1
+        return x
 
 
 class DependencyQANet:
@@ -219,28 +286,30 @@ class DependencyQANet:
             vocab_size, embed_size, weights=embeddings, trainable=False)
         self.highway = Highway(embed_size, 2, regularizer=regularizer, dropout=dropout)
         self.projection = Conv1D(filters, 1, kernel_regularizer=regularizer, activation='linear')
-        conv_layers = []
-        self_attention_layer = []
-        ffn_layer = []
-        for i in range(num_blocks):
-            conv_layers.append([])
-            for j in range(num_convs):
-                conv_layers[i].append(
-                    SeparableConv1D(filters, 7, padding='same', depthwise_regularizer=regularizer,
-                                    pointwise_regularizer=regularizer, activation='relu',
-                                    bias_regularizer=regularizer, activity_regularizer=regularizer))
-            self_attention_layer.append([
-                MultiHeadAttention(filters, num_heads, dropout, regularizer)])
-            ffn_layer.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
-                              Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
-        self.conv_layers = conv_layers
-        self.self_attention_layer = self_attention_layer
-        self.ffn_layer = ffn_layer
+        # conv_layers = []
+        # self_attention_layer = []
+        # ffn_layer = []
+        # for i in range(num_blocks):
+        #     conv_layers.append([])
+        #     for j in range(num_convs):
+        #         conv_layers[i].append(
+        #             SeparableConv1D(filters, 7, padding='same', depthwise_regularizer=regularizer,
+        #                             pointwise_regularizer=regularizer, activation='relu',
+        #                             bias_regularizer=regularizer, activity_regularizer=regularizer))
+        #     self_attention_layer.append(
+        #         MultiHeadAttention(filters, num_heads, dropout, regularizer))
+        #     ffn_layer.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
+        #                       Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
+        # self.conv_layers = conv_layers
+        # self.self_attention_layer = self_attention_layer
+        # self.ffn_layer = ffn_layer
+        self.encoder = Encoder(filters, 7, num_blocks, num_convs, num_heads,
+                               dropout, regularizer)
 
         self.output_layer = Conv1D(output_size, 1, activation='linear', kernel_regularizer=regularizer)
 
     def build(self):
-        dropout = self.dropout
+        # dropout = self.dropout
 
         ques_input = Input((self.ques_limit,))
 
@@ -253,9 +322,7 @@ class DependencyQANet:
         x_ques = self.embed_layer(ques_input)
         x_ques = self.highway(x_ques)
         x_ques = self.projection(x_ques)
-        x_ques = encoder_block(x_ques, self.conv_layers, self.self_attention_layer,
-                               self.ffn_layer, ques_len, dropout,
-                               num_blocks=self.num_blocks, repeat=1)[1]
+        x_ques = self.encoder(x_ques, ques_len)
 
         y = self.output_layer(x_ques)  # batch * seq_len * output_size
 
