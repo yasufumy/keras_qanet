@@ -164,10 +164,8 @@ class DependencyQANet:
 
         ques_input = Input((self.ques_limit,))
 
-        # mask
-        q_mask = Lambda(lambda x: tf.cast(x, tf.bool))(ques_input)
         # ques_len: (batch, 1)
-        ques_len = Lambda(lambda x: tf.expand_dims(tf.reduce_sum(tf.cast(x, tf.int32), axis=1), axis=1))(q_mask)
+        ques_len = SequenceLength()(ques_input)
 
         # encoding each
         x_ques = self.embed_layer(ques_input)
