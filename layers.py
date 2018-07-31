@@ -7,6 +7,20 @@ from keras.layers import Conv1D, Lambda, Dropout, SeparableConv1D, BatchNormaliz
 from keras.initializers import VarianceScaling
 
 
+class SequenceLength(Lambda):
+    def __init__(self, **kwargs):
+        def func(x):
+            mask = tf.cast(x, tf.bool)
+            length = tf.expand_dims(tf.reduce_sum(tf.to_int32(mask), axis=1), axis=1)
+            return length
+
+        super().__init__(function=func, **kwargs)
+
+    def compute_output_shape(self, input_shape):
+        batch_size = input_shape[0]
+        return tf.TensorShape([batch_size, 1])
+
+
 class PositionEmbedding(Layer):
     def __init__(self, min_timescale=1., max_timescale=1.e4, **kwargs):
         self.min_timescale = float(min_timescale)
@@ -97,21 +111,6 @@ class MultiHeadAttention(Layer):
         weights = self.masked_softmax(logits, seq_len, axis=-1)
         weights = K.in_train_phase(tf.nn.dropout(weights, 1 - dropout), weights, training=training)
         return tf.matmul(weights, v)
-
-    def mask_logits(self, x, mask, mask_value=tf.float32.min):
-        # shapes = [x if x is not None else -1 for x in inputs.shape.as_list()]
-        # mask = K.cast(mask, tf.int32)
-        # mask = K.one_hot(mask[:, 0], shapes[-1])
-        # mask = 1 - K.cumsum(mask, 1)
-        # mask = tf.cast(mask, tf.float32)
-        # mask = tf.reshape(mask, [shapes[0], 1, 1, shapes[-1]])
-        maxlen = x.shape.as_list()[-1]
-        # mask: (batch, 1, seq_len)
-        mask = tf.sequence_mask(mask, maxlen=maxlen, dtype=tf.float32)
-        mask = tf.expand_dims(tf.matmul(mask, mask, transpose_a=True), axis=1)  # (batch, 1, seq_len, seq_len)
-        mask = tf.where(tf.is_nan(mask), x=tf.zeros_like(mask), y=mask)
-        # mask = tf.expand_dims(mask, axis=1)
-        return x + mask_value * (1 - mask)
 
     def masked_softmax(self, x, mask, axis=-1, mask_value=tf.float32.min):
         maxlen = x.shape.as_list()[-1]
