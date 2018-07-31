@@ -217,70 +217,66 @@ class Highway(Layer):
         return x
 
 
-class Encoder(Layer):
-    def __init__(self, filters, kernel_size, num_blocks, num_convs, num_heads, dropout, regularizer, **kwargs):
-        super().__init__(**kwargs)
-
+class Encoder:
+    def __init__(self, filters, kernel_size, num_blocks, num_convs, num_heads,
+                 dropout, regularizer, **kwargs):
         conv_layers = []
         attention_layers = []
         feedforward_layers = []
         for i in range(num_blocks):
             conv_layers.append([])
             for j in range(num_convs):
-                conv_layers[i].append(SeparableConv1D(
-                    filters, kernel_size, padding='same', activation='relu',
-                    depthwise_regularizer=regularizer, pointwise_regularizer=regularizer,
-                    bias_regularizer=regularizer, activity_regularizer=regularizer))
+                conv_layers[i].append(
+                    SeparableConv1D(filters, 7, padding='same', depthwise_regularizer=regularizer,
+                                    pointwise_regularizer=regularizer, activation='relu',
+                                    bias_regularizer=regularizer, activity_regularizer=regularizer))
             attention_layers.append(
                 MultiHeadAttention(filters, num_heads, dropout, regularizer))
-            feedforward_layers.append([
-                Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
-                Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
+            feedforward_layers.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
+                                       Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
 
-        self.dropout = dropout
-        self.num_blocks = num_blocks
-        self.num_convs = num_convs
         self.conv_layers = conv_layers
         self.attention_layers = attention_layers
         self.feedforward_layers = feedforward_layers
+        self.num_blocks = num_blocks
+        self.num_convs = num_convs
+        self.dropout = dropout
 
-    def call(self, inputs, training=None):
-        x, seq_len = inputs
+    def __call__(self, x, seq_len):
         conv_layers = self.conv_layers
         attention_layers = self.attention_layers
         feedforward_layers = self.feedforward_layers
-        dropout = self.dropout
         num_blocks = self.num_blocks
         num_convs = self.num_convs
+        dropout = self.dropout
         total_layer = (2 + num_convs) * num_blocks
         sub_layer = 1
 
         for i in range(num_blocks):
             x = PositionEmbedding()(x)
-            # conv
+            # convolution
             for j in range(num_convs):
                 residual = x
-                x = BatchNormalization()(x, training=training)
+                x = BatchNormalization()(x)
                 if sub_layer % 2 == 0:
-                    x = Dropout(dropout)(x, training=training)
+                    x = Dropout(dropout)(x)
                 x = conv_layers[i][j](x)
-                x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual], training=training)
+                x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
                 sub_layer += 1
             # attention
             residual = x
-            x = BatchNormalization()(x, training=training)
+            x = BatchNormalization()(x)
             if sub_layer % 2 == 0:
-                x = Dropout(dropout)(x, training=training)
-            x = attention_layers[i]([x, x, x, seq_len], training=training)
-            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual], training=training)
-            sub_layer += 1
+                x = Dropout(dropout)(x)
+            x = attention_layers[i]([x, x, x, seq_len])
+            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
             # feed-forward
             residual = x
-            x = BatchNormalization()(x, training=training)
+            x = BatchNormalization()(x)
             if sub_layer % 2 == 0:
-                x = Dropout(dropout)(x, training=training)
+                x = Dropout(dropout)(x)
             x = feedforward_layers[i][0](x)
             x = feedforward_layers[i][1](x)
-            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual], training=training)
+            x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
             sub_layer += 1
         return x
