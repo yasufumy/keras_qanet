@@ -2,7 +2,7 @@ import tensorflow as tf
 from keras import Model
 from keras.regularizers import l2
 from keras.layers import Input, Embedding, Concatenate, Lambda, \
-    Conv1D, Masking, LSTM, Bidirectional, Dense
+    Conv1D, Masking, LSTM, Bidirectional, Dense, Dropout
 
 from layers import Highway, Encoder, ContextQueryAttention, SequenceLength
 
@@ -55,11 +55,13 @@ class QANet:
 
         # encoding each
         x_cont = self.embed_layer(cont_input)
+        x_cont = Dropout()(x_cont)
         x_cont = self.highway(x_cont)
         x_cont = self.projection1(x_cont)
         x_cont = self.encoder(x_cont, cont_len)
 
         x_ques = self.embed_layer(ques_input)
+        x_ques = Dropout()(x_ques)
         x_ques = self.highway(x_ques)
         x_ques = self.projection1(x_ques)
         x_ques = self.encoder(x_ques, ques_len)
