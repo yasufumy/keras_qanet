@@ -127,8 +127,7 @@ class MultiHeadAttention(Layer):
 
 
 class ContextQueryAttention(Layer):
-    def __init__(self, output_size, cont_limit, ques_limit, dropout, regularizer, **kwargs):
-        self.output_size = output_size
+    def __init__(self, cont_limit, ques_limit, dropout, regularizer, **kwargs):
         self.cont_limit = cont_limit
         self.ques_limit = ques_limit
         self.dropout = dropout
@@ -136,47 +135,52 @@ class ContextQueryAttention(Layer):
         super().__init__(**kwargs)
 
     def build(self, input_shape):
-        # input_shape = [(batch, context_limit, hidden), (batch, question_limit, hidden)]
-        self.W0 = self.add_weight(name='W0', trainable=True, shape=(input_shape[0][2], 1),
-                                  initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
-                                  regularizer=self.regularizer)
-        self.W1 = self.add_weight(name='W1', trainable=True, shape=(input_shape[1][2], 1),
-                                  initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
-                                  regularizer=self.regularizer)
-        self.W2 = self.add_weight(name='W2', trainable=True, shape=(1, 1, input_shape[0][2]),
-                                  initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
-                                  regularizer=self.regularizer)
-
-    def apply_mask(self, inputs, seq_len, axis=1, time_dim=1, mode='add'):
-        if seq_len is None:
-            return inputs
-        else:
-            seq_len = K.cast(seq_len, tf.int32)
-            mask = K.one_hot(seq_len[:, 0], K.shape(inputs)[time_dim])
-            mask = 1 - K.cumsum(mask, 1)
-            mask = K.expand_dims(mask, axis)
-            if mode == 'add':
-                return inputs - (1 - mask) * 1e12
-            if mode == 'mul':
-                return inputs * mask
+        # (batch, seq_len, hidden_dim)
+        c_shape = input_shape[0]
+        self.W = self.add_weight(
+            'weight', [1, c_shape[-1] * 3, 1], trainable=True,
+            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
+            regularizer=self.regularizer)
 
     def call(self, inputs):
-        x_cont, x_ques, cont_len, ques_len = inputs
-        S_cont = K.tile(K.dot(x_cont, self.W0), [1, 1, self.ques_limit])
-        S_ques = K.tile(K.permute_dimensions(K.dot(x_ques, self.W1), pattern=(0, 2, 1)), [1, self.cont_limit, 1])
-        S_fuse = K.batch_dot(x_cont * self.W2, K.permute_dimensions(x_ques, pattern=(0, 2, 1)))
-        S = S_cont + S_ques + S_fuse
-        S_bar = tf.nn.softmax(self.apply_mask(S, ques_len, axis=1, time_dim=2))
-        S_T = K.permute_dimensions(tf.nn.softmax(self.apply_mask(S, cont_len, axis=2, time_dim=1), axis=1), (0, 2, 1))
-        c2q = tf.matmul(S_bar, x_ques)
-        q2c = tf.matmul(tf.matmul(S_bar, S_T), x_cont)
-        result = K.concatenate([x_cont, c2q, x_cont * c2q, x_cont * q2c], axis=-1)
-        return [result, S_bar, S_T]
+        c, q, c_len, q_len = inputs
+        d = c.shape[-1]  # hidden_dim
+
+        # similarity
+        c_tile = tf.tile(tf.expand_dims(c, 2), [1, 1, self.ques_limit, 1])
+        q_tile = tf.tile(tf.expand_dims(q, 1), [1, self.cont_limit, 1, 1])
+        total_len = self.ques_limit * self.cont_limit
+        c_mat = tf.reshape(c_tile, [-1, total_len, d])
+        q_mat = tf.reshape(q_tile, [-1, total_len, d])
+        c_q = c_mat * q_mat
+        weight_in = tf.concat([c_mat, q_mat, c_q], 2)
+        S = tf.reshape(K.conv1d(weight_in, self.W), [-1, self.cont_limit, self.ques_limit])
+
+        # mask
+        # mask: (batch, 1, c_len)
+        c_mask = tf.sequence_mask(c_len, maxlen=self.cont_limit, dtype=tf.float32)
+        # mask: (batch, 1, q_len)
+        q_mask = tf.sequence_mask(q_len, maxlen=self.ques_limit, dtype=tf.float32)
+        # mask: (batch, c_len, q_len)
+        mask = tf.matmul(c_mask, q_mask, transpose_a=True)
+
+        # softmax
+        S_q = self.masked_softmax(S, mask, axis=2)
+        S_c = self.masked_softmax(S, mask, axis=1)
+        a = tf.matmul(S_q, q)
+        b = tf.matmul(tf.matmul(S_q, S_c, transpose_b=True), c)
+        x = tf.concat([c, a, c * a, c * b], axis=2)
+        return [x, S_q, S_c]
+
+    def masked_softmax(self, x, mask, axis=-1, mask_value=tf.float32.min):
+        x = x + (1 - mask) * mask_value
+        weights = tf.nn.softmax(x, axis=axis)
+        return weights * mask
 
     def compute_output_shape(self, input_shape):
-        return [(input_shape[0][0], input_shape[0][1], self.output_size),
-                (input_shape[0][0], input_shape[0][1], input_shape[1][1]),
-                (input_shape[0][0], input_shape[1][1], input_shape[0][1])]
+        batch, c_len, d = input_shape[0]
+        batch, q_len, d = input_shape[1]
+        return [(batch, c_len, d * 4), (batch, c_len, q_len), (batch, c_len, q_len)]
 
 
 class LayerDropout(Layer):
