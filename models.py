@@ -31,7 +31,7 @@ class QANet:
         self.encoder = Encoder(filters, 7, encoder_num_blocks, encoder_num_convs,
                                num_heads, dropout, regularizer)
 
-        self.coattention = ContextQueryAttention(filters * 4, cont_limit, ques_limit, dropout, regularizer)
+        self.coattention = ContextQueryAttention(cont_limit, ques_limit, dropout, regularizer)
         self.projection2 = Conv1D(filters, 1, kernel_regularizer=regularizer, activation='linear')
 
         self.output_layer = Encoder(filters, 5, output_num_blocks, output_num_convs,
@@ -44,12 +44,9 @@ class QANet:
         cont_input = Input((self.cont_limit,))
         ques_input = Input((self.ques_limit,))
 
-        # mask
-        c_mask = Lambda(lambda x: tf.cast(x, tf.bool))(cont_input)
-        q_mask = Lambda(lambda x: tf.cast(x, tf.bool))(ques_input)
         # (batch, 1)
-        cont_len = Lambda(lambda x: tf.expand_dims(tf.reduce_sum(tf.cast(x, tf.int32), axis=1), axis=1))(c_mask)
-        ques_len = Lambda(lambda x: tf.expand_dims(tf.reduce_sum(tf.cast(x, tf.int32), axis=1), axis=1))(q_mask)
+        cont_len = SequenceLength()(cont_input)
+        ques_len = SequenceLength()(ques_input)
 
         # encoding each
         x_cont = self.embed_layer(cont_input)
