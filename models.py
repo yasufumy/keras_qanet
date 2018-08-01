@@ -59,7 +59,7 @@ class QANet:
         x_ques = self.projection1(x_ques)
         x_ques = self.encoder(x_ques, ques_len)
 
-        x, S_bar, S_T = self.coattention([x_cont, x_ques, cont_len, ques_len])
+        x, S_q, S_c = self.coattention([x_cont, x_ques, cont_len, ques_len])
         x = self.projection2(x)
 
         outputs = []
@@ -86,7 +86,7 @@ class QANet:
         x_end = Lambda(lambda x: mask_sequence(x[0], x[1]))([x_end, cont_len])
         x_end = Lambda(lambda x: tf.nn.softmax(x, axis=-1), name='end')(x_end)  # batch * seq_len
 
-        return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end, S_bar, S_T])
+        return Model(inputs=[ques_input, cont_input], outputs=[x_start, x_end, S_q, S_c])
 
 
 class DependencyQANet:
