@@ -8,7 +8,7 @@ from keras.callbacks import TensorBoard
 from models import QANet
 from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
     SquadTestConverter
-from trainer import SquadTrainer, BatchLearningRateScheduler, ExponentialMovingAverage
+from trainer import SquadTrainer, BatchLearningRateScheduler  # , ExponentialMovingAverage
 from metrics import SquadMetric
 from utils import evaluate, dump_graph
 
@@ -40,9 +40,9 @@ def main(args):
     train_generator = Iterator(train_dataset, batch_size, converter)
     dev_generator = Iterator(dev_dataset, batch_size, converter)
     trainer = SquadTrainer(model, train_generator, epochs, dev_generator,
-                           './model/lightqanet.{epoch:02d}-{val_loss:.2f}.h5')
+                           './model/qanet.{epoch:02d}-{val_loss:.2f}.h5')
     trainer.add_callback(BatchLearningRateScheduler())
-    trainer.add_callback(ExponentialMovingAverage(0.999))
+    # trainer.add_callback(ExponentialMovingAverage(0.999))
     if args.use_tensorboard:
         trainer.add_callback(TensorBoard(log_dir='./graph', batch_size=batch_size))
     history = trainer.run()
