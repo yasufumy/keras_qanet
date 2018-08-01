@@ -1,21 +1,18 @@
 import tensorflow as tf
 from keras import Model
 from keras.regularizers import l2
-from keras.initializers import VarianceScaling
 from keras.layers import Input, Embedding, Concatenate, Lambda, \
     Conv1D, Masking, LSTM, Bidirectional, Dense
 
 from layers import Highway, Encoder, ContextQueryAttention, SequenceLength
 
 
-regularizer = l2(3e-7)
-VarianceScaling(scale=1., mode='fan_in', distribution='normal')
-
-
 class QANet:
     def __init__(self, vocab_size, embed_size, filters=128, num_heads=8,
                  encoder_num_blocks=1, encoder_num_convs=4, output_num_blocks=7, output_num_convs=2,
-                 cont_limit=400, ques_limit=50, dropout=0.1, embeddings=None):
+                 cont_limit=400, ques_limit=50, dropout=0.1, embeddings=None,
+                 initializer=tf.variance_scaling_initializer(1, 'fan_in', distribution='normal'),
+                 regularizer=l2(3e-7)):
         self.cont_limit = cont_limit
         self.ques_limit = ques_limit
         self.dropout = dropout
@@ -25,20 +22,28 @@ class QANet:
             embeddings = [embeddings]
         self.embed_layer = Embedding(
             vocab_size, embed_size, weights=embeddings, trainable=False)
-        self.highway = Highway(embed_size, 2, regularizer=regularizer, dropout=dropout)
-        self.projection1 = Conv1D(filters, 1, kernel_regularizer=regularizer, activation='linear')
+        self.highway = Highway(embed_size, 2, initializer, regularizer, dropout)
+        self.projection1 = Conv1D(
+            filters, 1, activation='linear', kernel_initializer=initializer,
+            kernel_regularizer=regularizer, bias_regularizer=regularizer)
 
         self.encoder = Encoder(filters, 7, encoder_num_blocks, encoder_num_convs,
-                               num_heads, dropout, regularizer)
+                               num_heads, initializer, regularizer, dropout)
 
-        self.coattention = ContextQueryAttention(cont_limit, ques_limit, dropout, regularizer)
-        self.projection2 = Conv1D(filters, 1, kernel_regularizer=regularizer, activation='linear')
+        self.coattention = ContextQueryAttention(cont_limit, ques_limit, initializer, regularizer, dropout)
+        self.projection2 = Conv1D(
+            filters, 1, activation='linear', kernel_initializer=initializer,
+            kernel_regularizer=regularizer, bias_regularizer=regularizer)
 
         self.output_layer = Encoder(filters, 5, output_num_blocks, output_num_convs,
-                                    num_heads, dropout, regularizer)
+                                    num_heads, initializer, regularizer, dropout)
 
-        self.start_layer = Conv1D(1, 1, activation='linear', kernel_regularizer=regularizer)
-        self.end_layer = Conv1D(1, 1, activation='linear', kernel_regularizer=regularizer)
+        self.start_layer = Conv1D(
+            1, 1, activation='linear', kernel_initializer=initializer,
+            kernel_regularizer=regularizer, bias_regularizer=regularizer)
+        self.end_layer = Conv1D(
+            1, 1, activation='linear', kernel_initializer=initializer,
+            kernel_regularizer=regularizer, bias_regularizer=regularizer)
 
     def build(self):
         cont_input = Input((self.cont_limit,))
