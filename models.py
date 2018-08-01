@@ -55,13 +55,13 @@ class QANet:
 
         # encoding each
         x_cont = self.embed_layer(cont_input)
-        x_cont = Dropout()(x_cont)
+        x_cont = Dropout(self.dropout)(x_cont)
         x_cont = self.highway(x_cont)
         x_cont = self.projection1(x_cont)
         x_cont = self.encoder(x_cont, cont_len)
 
         x_ques = self.embed_layer(ques_input)
-        x_ques = Dropout()(x_ques)
+        x_ques = Dropout(self.dropout)(x_ques)
         x_ques = self.highway(x_ques)
         x_ques = self.projection1(x_ques)
         x_ques = self.encoder(x_ques, ques_len)
