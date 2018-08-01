@@ -4,7 +4,6 @@ import tensorflow as tf
 from keras import backend as K
 from keras.engine.topology import Layer
 from keras.layers import Conv1D, Lambda, Dropout, SeparableConv1D, BatchNormalization
-from keras.initializers import VarianceScaling
 
 
 class SequenceLength(Lambda):
@@ -55,11 +54,12 @@ class PositionEmbedding(Layer):
 
 
 class MultiHeadAttention(Layer):
-    def __init__(self, input_dim, num_heads, dropout, regularizer, **kwargs):
+    def __init__(self, input_dim, num_heads, initializer, regularizer, dropout, **kwargs):
         super().__init__(**kwargs)
         self.input_dim = input_dim
         self.num_heads = num_heads
         self.dropout = dropout
+        self.initializer = initializer
         self.regularizer = regularizer
         self.d = input_dim // num_heads
 
@@ -67,20 +67,16 @@ class MultiHeadAttention(Layer):
         # W_Q: (filter_dim, input_dim, input_dim)
         self.W_Q = self.add_weight(
             'W_Q', [1, self.input_dim, self.input_dim], trainable=True,
-            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
-            regularizer=self.regularizer)
+            initializer=self.initializer, regularizer=self.regularizer)
         self.W_K = self.add_weight(
             'W_K', [1, self.input_dim, self.input_dim], trainable=True,
-            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
-            regularizer=self.regularizer)
+            initializer=self.initializer, regularizer=self.regularizer)
         self.W_V = self.add_weight(
             'W_V', [1, self.input_dim, self.input_dim], trainable=True,
-            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
-            regularizer=self.regularizer)
+            initializer=self.initializer, regularizer=self.regularizer)
         self.W_O = self.add_weight(
             'W_O', [1, self.input_dim, self.input_dim], trainable=True,
-            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
-            regularizer=self.regularizer)
+            initializer=self.initializer, regularizer=self.regularizer)
 
     def call(self, inputs, training=None):
         q, k, v, seq_len = inputs
@@ -127,20 +123,20 @@ class MultiHeadAttention(Layer):
 
 
 class ContextQueryAttention(Layer):
-    def __init__(self, cont_limit, ques_limit, dropout, regularizer, **kwargs):
+    def __init__(self, cont_limit, ques_limit, initializer, regularizer, dropout, **kwargs):
+        super().__init__(**kwargs)
         self.cont_limit = cont_limit
         self.ques_limit = ques_limit
-        self.dropout = dropout
+        self.initializer = initializer
         self.regularizer = regularizer
-        super().__init__(**kwargs)
+        self.dropout = dropout
 
     def build(self, input_shape):
         # (batch, seq_len, hidden_dim)
         c_shape = input_shape[0]
         self.W = self.add_weight(
             'weight', [1, c_shape[-1] * 3, 1], trainable=True,
-            initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
-            regularizer=self.regularizer)
+            initializer=self.initializer, regularizer=self.regularizer)
 
     def call(self, inputs):
         c, q, c_len, q_len = inputs
@@ -201,12 +197,15 @@ class LayerDropout(Layer):
 
 
 class Highway:
-    def __init__(self, filters, num_layers, regularizer=None, dropout=0.):
+    def __init__(self, filters, num_layers, initializer=None, regularizer=None, dropout=.1):
         self.dropout = dropout
         conv_layers = []
         for i in range(num_layers):
-            conv_layers.append([Conv1D(filters, 1, kernel_regularizer=regularizer, activation='sigmoid'),
-                                Conv1D(filters, 1, kernel_regularizer=regularizer, activation='relu')])
+            conv_layers.append([
+                Conv1D(filters, 1, activation='sigmoid', kernel_initializer=initializer,
+                       kernel_regularizer=regularizer, bias_regularizer=regularizer),
+                Conv1D(filters, 1, activation='relu', kernel_initializer=initializer,
+                       kernel_regularizer=regularizer, bias_regularizer=regularizer)])
         self.conv_layers = conv_layers
 
     def __call__(self, x):
@@ -221,7 +220,7 @@ class Highway:
 
 class Encoder:
     def __init__(self, filters, kernel_size, num_blocks, num_convs, num_heads,
-                 dropout, regularizer):
+                 initializer=None, regularizer=None, dropout=.1):
         conv_layers = []
         attention_layers = []
         feedforward_layers = []
@@ -229,13 +228,18 @@ class Encoder:
             conv_layers.append([])
             for j in range(num_convs):
                 conv_layers[i].append(
-                    SeparableConv1D(filters, 7, padding='same', depthwise_regularizer=regularizer,
-                                    pointwise_regularizer=regularizer, activation='relu',
-                                    bias_regularizer=regularizer, activity_regularizer=regularizer))
+                    SeparableConv1D(
+                        filters, 7, padding='same', depthwise_initializer=initializer,
+                        pointwise_initializer=initializer, depthwise_regularizer=regularizer,
+                        pointwise_regularizer=regularizer, activation='relu',
+                        bias_regularizer=regularizer, activity_regularizer=regularizer))
             attention_layers.append(
-                MultiHeadAttention(filters, num_heads, dropout, regularizer))
-            feedforward_layers.append([Conv1D(filters, 1, activation='relu', kernel_regularizer=regularizer),
-                                       Conv1D(filters, 1, activation='linear', kernel_regularizer=regularizer)])
+                MultiHeadAttention(filters, num_heads, initializer, regularizer, dropout))
+            feedforward_layers.append([
+                Conv1D(filters, 1, activation='relu', kernel_initializer=initializer,
+                       kernel_regularizer=regularizer, bias_regularizer=regularizer),
+                Conv1D(filters, 1, activation='linear', kernel_initializer=initializer,
+                       kernel_regularizer=regularizer, bias_regularizer=regularizer)])
 
         self.conv_layers = conv_layers
         self.attention_layers = attention_layers
