@@ -73,8 +73,8 @@ def evaluate(model, test_generator, metric, index_to_token, answer_limit=30):
 
         questions, contexts = inputs
         for i, (start, end) in enumerate(zip(start_indices, end_indices)):
-            context = [index_to_token.get(x, '<unk>') for x in contexts[i] if x]
-            question = [index_to_token.get(x, '<unk>') for x in questions[i] if x]
+            context = [index_to_token[x] for x in contexts[i] if x]
+            question = [index_to_token[x] for x in questions[i] if x]
             if random.random() > .5 and count < 20:
                 visualize(question, context, answer[i], S_T[i], f'attention_{count}.png')
                 count += 1
