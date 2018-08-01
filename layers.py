@@ -196,10 +196,8 @@ class LayerDropout(Layer):
         return input_shape
 
 
-class Highway(Layer):
-    def __init__(self, filters, num_layers, regularizer=None, dropout=0., **kwargs):
-        super().__init__(**kwargs)
-
+class Highway:
+    def __init__(self, filters, num_layers, regularizer=None, dropout=0.):
         self.dropout = dropout
         conv_layers = []
         for i in range(num_layers):
@@ -207,19 +205,19 @@ class Highway(Layer):
                                 Conv1D(filters, 1, kernel_regularizer=regularizer, activation='relu')])
         self.conv_layers = conv_layers
 
-    def call(self, x, training=None):
+    def __call__(self, x):
         conv_layers = self.conv_layers
         for i in range(len(conv_layers)):
             T = conv_layers[i][0](x)
             H = conv_layers[i][1](x)
-            H = Dropout(self.dropout)(x, training=training)
+            H = Dropout(self.dropout)(x)
             x = Lambda(lambda inputs: inputs[0] * inputs[1] + inputs[2] * (1 - inputs[1]))([H, T, x])
         return x
 
 
 class Encoder:
     def __init__(self, filters, kernel_size, num_blocks, num_convs, num_heads,
-                 dropout, regularizer, **kwargs):
+                 dropout, regularizer):
         conv_layers = []
         attention_layers = []
         feedforward_layers = []
