@@ -91,7 +91,9 @@ class QANet:
 
 class DependencyQANet:
     def __init__(self, vocab_size, embed_size, output_size, filters=128, num_heads=1,
-                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=2, embeddings=None):
+                 ques_limit=50, dropout=0.1, num_blocks=1, num_convs=2, embeddings=None,
+                 initializer=tf.variance_scaling_initializer(1, 'fan_in', distribution='normal'),
+                 regularizer=l2(3e-7)):
         self.ques_limit = ques_limit
         self.num_blocks = num_blocks
         self.num_convs = num_convs
@@ -100,10 +102,12 @@ class DependencyQANet:
             embeddings = [embeddings]
         self.embed_layer = Embedding(
             vocab_size, embed_size, weights=embeddings, trainable=False)
-        self.highway = Highway(embed_size, 2, regularizer=regularizer, dropout=dropout)
-        self.projection = Conv1D(filters, 1, kernel_regularizer=regularizer, activation='linear')
-        self.encoder = Encoder(filters, 7, num_blocks, num_convs, num_heads,
-                               dropout, regularizer)
+        self.highway = Highway(embed_size, 2, initializer, regularizer, dropout)
+        self.projection = Conv1D(
+            filters, 1, activation='linear', kernel_initializer=initializer,
+            kernel_regularizer=regularizer, bias_regularizer=regularizer)
+        self.encoder = Encoder(filters, 7, num_blocks, num_convs,
+                               num_heads, initializer, regularizer, dropout)
 
         self.output_layer = Conv1D(output_size, 1, activation='linear', kernel_regularizer=regularizer)
 
