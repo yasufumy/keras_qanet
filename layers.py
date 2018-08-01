@@ -64,35 +64,36 @@ class MultiHeadAttention(Layer):
         self.d = input_dim // num_heads
 
     def build(self, input_shape):
+        # W_Q: (filter_dim, input_dim, input_dim)
         self.W_Q = self.add_weight(
-            'W_Q', [self.input_dim, self.input_dim], trainable=True,
+            'W_Q', [1, self.input_dim, self.input_dim], trainable=True,
             initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
             regularizer=self.regularizer)
         self.W_K = self.add_weight(
-            'W_K', [self.input_dim, self.input_dim], trainable=True,
+            'W_K', [1, self.input_dim, self.input_dim], trainable=True,
             initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
             regularizer=self.regularizer)
         self.W_V = self.add_weight(
-            'W_V', [self.input_dim, self.input_dim], trainable=True,
+            'W_V', [1, self.input_dim, self.input_dim], trainable=True,
             initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
             regularizer=self.regularizer)
         self.W_O = self.add_weight(
-            'W_O', [self.input_dim, self.input_dim], trainable=True,
+            'W_O', [1, self.input_dim, self.input_dim], trainable=True,
             initializer=VarianceScaling(scale=1., mode='fan_in', distribution='normal'),
             regularizer=self.regularizer)
 
     def call(self, inputs, training=None):
         q, k, v, seq_len = inputs
 
-        q = self.split_heads(K.dot(q, self.W_Q), self.num_heads)
-        k = self.split_heads(K.dot(k, self.W_K), self.num_heads)
-        v = self.split_heads(K.dot(v, self.W_V), self.num_heads)
+        q = self.split_heads(K.conv1d(q, self.W_Q), self.num_heads)
+        k = self.split_heads(K.conv1d(k, self.W_K), self.num_heads)
+        v = self.split_heads(K.conv1d(v, self.W_V), self.num_heads)
 
         scale = self.d ** (1/2)
         q *= scale
         x = self.dot_product_attention(q, k, v, seq_len, self.dropout, training)
         x = self.combine_heads(x)
-        return K.dot(x, self.W_O)
+        return K.conv1d(x, self.W_O)
 
     def split_heads(self, x, n):
         shape = x.shape.as_list()
