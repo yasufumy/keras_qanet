@@ -6,11 +6,9 @@ from keras.optimizers import Adam
 from keras.callbacks import TensorBoard
 
 from models import QANet
-from data import SquadReader, Iterator, SquadConverter, Vocabulary,\
-    SquadTestConverter
+from data import SquadReader, Iterator, SquadConverter, Vocabulary
 from trainer import SquadTrainer, BatchLearningRateScheduler  # , ExponentialMovingAverage
-from metrics import SquadMetric
-from utils import evaluate, dump_graph
+from utils import dump_graph
 
 from prepare_vocab import PAD_TOKEN, UNK_TOKEN
 
@@ -47,13 +45,6 @@ def main(args):
         trainer.add_callback(TensorBoard(log_dir='./graph', batch_size=batch_size))
     history = trainer.run()
     dump_graph(history, 'loss_graph.png')
-
-    metric = SquadMetric()
-    test_dataset = SquadReader(args.test_path)
-    converter = SquadTestConverter(token_to_index, PAD_TOKEN, UNK_TOKEN, lower=args.lower)
-    test_generator = Iterator(test_dataset, args.batch, converter, False, False)
-    em_score, f1_score = evaluate(model, test_generator, metric, index_to_token)
-    print('EM: {}, F1: {}'.format(em_score, f1_score))
 
 
 if __name__ == '__main__':
