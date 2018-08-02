@@ -88,7 +88,7 @@ def visualize(question, context, answer, score, filename):
     f = plt.figure(figsize=(40, 12))
     ax = f.add_subplot(1, 1, 1)
 
-    i = ax.imshow(score[:len(question), :len(context)],
+    i = ax.imshow(score[:len(context), :len(question)].T,
                   interpolation='nearest', cmap='Blues')
 
     cbaxes = f.add_axes([0.2, 0.1, 0.6, 0.03])

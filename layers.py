@@ -188,7 +188,7 @@ class LayerDropout(Layer):
         x, residual = inputs
         pred = tf.random_uniform([]) < self.dropout
         x_train = tf.cond(
-            pred, lambda: residual, lambda: tf.nn.dropout(x, 1. - self.dropout) + residual)
+            pred, lambda: residual, lambda: x + residual)
         x_test = x + residual
         return K.in_train_phase(x_train, x_test, training=training)
 
