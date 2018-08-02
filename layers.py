@@ -3,7 +3,7 @@ import math
 import tensorflow as tf
 from keras import backend as K
 from keras.engine.topology import Layer
-from keras.layers import Conv1D, Lambda, Dropout, SeparableConv1D, BatchNormalization
+from keras.layers import Conv1D, Lambda, Dropout, SeparableConv1D
 
 
 class SequenceLength(Lambda):
@@ -196,6 +196,30 @@ class LayerDropout(Layer):
         return input_shape
 
 
+class LayerNormalization(Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def build(self, input_shape):
+        # (batch, seq_len, hidden_dim)
+        hidden_dim = input_shape[-1]
+        self.gamma = self.add_weight(
+            'gamma', [hidden_dim], trainable=True, initializer=tf.ones_initializer())
+        self.beta = self.add_weight(
+            'beta', [hidden_dim], trainable=True, initializer=tf.zeros_initializer())
+
+        super().build(input_shape)
+
+    def call(self, x):
+        mean = tf.reduce_mean(x, axis=-1, keepdims=True)
+        variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
+        normed_x = (x - mean) * tf.rsqrt(variance + K.epsilon())
+        return normed_x * self.gamma + self.beta
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
 class Highway:
     def __init__(self, filters, num_layers, initializer=None, regularizer=None, dropout=.1):
         self.dropout = dropout
@@ -263,7 +287,7 @@ class Encoder:
             # convolution
             for j in range(num_convs):
                 residual = x
-                x = BatchNormalization()(x)
+                x = LayerNormalization()(x)
                 if sub_layer % 2 == 0:
                     x = Dropout(dropout)(x)
                 x = conv_layers[i][j](x)
@@ -271,14 +295,14 @@ class Encoder:
                 sub_layer += 1
             # attention
             residual = x
-            x = BatchNormalization()(x)
+            x = LayerNormalization()(x)
             if sub_layer % 2 == 0:
                 x = Dropout(dropout)(x)
             x = attention_layers[i]([x, x, x, seq_len])
             x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
             # feed-forward
             residual = x
-            x = BatchNormalization()(x)
+            x = LayerNormalization()(x)
             if sub_layer % 2 == 0:
                 x = Dropout(dropout)(x)
             x = feedforward_layers[i][0](x)
