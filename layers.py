@@ -292,25 +292,25 @@ class Encoder:
             for j in range(num_convs):
                 residual = x
                 x = LayerNormalization()(x)
+                x = conv_layers[i][j](x)
                 if sub_layer % 2 == 0:
                     x = Dropout(dropout)(x)
-                x = conv_layers[i][j](x)
                 x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
                 sub_layer += 1
             # attention
             residual = x
             x = LayerNormalization()(x)
+            x = attention_layers[i]([x, x, x, seq_len])
             if sub_layer % 2 == 0:
                 x = Dropout(dropout)(x)
-            x = attention_layers[i]([x, x, x, seq_len])
             x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
             # feed-forward
             residual = x
             x = LayerNormalization()(x)
-            if sub_layer % 2 == 0:
-                x = Dropout(dropout)(x)
             x = feedforward_layers[i][0](x)
             x = feedforward_layers[i][1](x)
+            if sub_layer % 2 == 0:
+                x = Dropout(dropout)(x)
             x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
             sub_layer += 1
         return x
