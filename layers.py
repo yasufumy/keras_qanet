@@ -196,6 +196,30 @@ class LayerDropout(Layer):
         return input_shape
 
 
+class LayerNormalization(Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def build(self, input_shape):
+        # (batch, seq_len, hidden_dim)
+        hidden_dim = input_shape[-1]
+        self.gamma = self.add_weight(
+            'gamma', [hidden_dim], trainable=True, initializer=tf.ones_initializer())
+        self.beta = self.add_weight(
+            'beta', [hidden_dim], trainable=True, initializer=tf.zeros_initializer())
+
+        super().build(input_shape)
+
+    def call(self, x):
+        mean = tf.reduce_mean(x, axis=-1, keepdims=True)
+        variance = tf.reduce_mean(tf.square(x - mean), axis=-1, keepdims=True)
+        normed_x = (x - mean) * tf.rsqrt(variance + K.epsilon())
+        return normed_x * self.gamma + self.beta
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
 class Highway:
     def __init__(self, filters, num_layers, initializer=None, regularizer=None, dropout=.1):
         self.dropout = dropout
