@@ -3,7 +3,7 @@ import math
 import tensorflow as tf
 from keras import backend as K
 from keras.engine.topology import Layer
-from keras.layers import Conv1D, Lambda, Dropout, SeparableConv1D, BatchNormalization
+from keras.layers import Conv1D, Lambda, Dropout, SeparableConv1D
 
 
 class SequenceLength(Lambda):
@@ -287,7 +287,7 @@ class Encoder:
             # convolution
             for j in range(num_convs):
                 residual = x
-                x = BatchNormalization()(x)
+                x = LayerNormalization()(x)
                 if sub_layer % 2 == 0:
                     x = Dropout(dropout)(x)
                 x = conv_layers[i][j](x)
@@ -295,14 +295,14 @@ class Encoder:
                 sub_layer += 1
             # attention
             residual = x
-            x = BatchNormalization()(x)
+            x = LayerNormalization()(x)
             if sub_layer % 2 == 0:
                 x = Dropout(dropout)(x)
             x = attention_layers[i]([x, x, x, seq_len])
             x = LayerDropout(dropout * (sub_layer / total_layer))([x, residual])
             # feed-forward
             residual = x
-            x = BatchNormalization()(x)
+            x = LayerNormalization()(x)
             if sub_layer % 2 == 0:
                 x = Dropout(dropout)(x)
             x = feedforward_layers[i][0](x)
