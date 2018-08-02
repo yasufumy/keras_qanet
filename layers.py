@@ -78,6 +78,8 @@ class MultiHeadAttention(Layer):
             'W_O', [1, self.input_dim, self.input_dim], trainable=True,
             initializer=self.initializer, regularizer=self.regularizer)
 
+        super().build(input_shape)
+
     def call(self, inputs, training=None):
         q, k, v, seq_len = inputs
 
@@ -137,6 +139,8 @@ class ContextQueryAttention(Layer):
         self.W = self.add_weight(
             'weight', [1, c_shape[-1] * 3, 1], trainable=True,
             initializer=self.initializer, regularizer=self.regularizer)
+
+        super().build(input_shape)
 
     def call(self, inputs):
         c, q, c_len, q_len = inputs
