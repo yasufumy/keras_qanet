@@ -15,7 +15,7 @@ from utils import dump_graph
 from prepare_vocab import PAD_TOKEN, UNK_TOKEN
 
 
-def tensorflow_ops(model, train_generator):
+def tensorflow_ops(model, train_generator, dev_generator):
     sess = tf.Session()
     K.set_session(sess)
 
@@ -28,15 +28,19 @@ def tensorflow_ops(model, train_generator):
         return tf.reduce_mean(tf.losses.sparse_softmax_cross_entropy(labels=t, logits=y))
 
     loss = position_loss(output_tensors[0], start_labels) + position_loss(output_tensors[1], end_labels)
+    for l2_loss in model.losses:
+        loss += l2_loss
 
     global_step = tf.train.get_or_create_global_step()
     learning_rate = tf.minimum(0.001, 0.001 / tf.log(tf.cast(1000 - 1, tf.float32)
                                                      * tf.log(tf.cast(global_step, tf.float32) + 1)))
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, beta1=0.8, beta2=0.999, epsilon=1e-7)
+
     grads, tvars = zip(*optimizer.compute_gradients(loss, colocate_gradients_with_ops=True))
     clipped_grads, _ = tf.clip_by_global_norm(grads, 5.)
     apply_gradient_op = optimizer.apply_gradients(zip(clipped_grads, tvars), global_step=global_step)
-    ema = tf.train.ExponentialMovingAverage(0.9999)
+
+    ema = tf.train.ExponentialMovingAverage(0.9999, global_step)
     with tf.control_dependencies([apply_gradient_op]):
         training_op = ema.apply(tf.trainable_variables())
 
@@ -44,12 +48,12 @@ def tensorflow_ops(model, train_generator):
     sess.run(init_op)
 
     with sess.as_default():
-        for i in range(100):
+        for i in range(70):
             inputs, outputs = next(train_generator)
             loss_val, _, global_step_val = sess.run([loss, training_op, global_step], feed_dict={
                 input_tensors[0]: inputs[0], input_tensors[1]: inputs[1],
                 start_labels: outputs[0], end_labels: outputs[1]})
-            print(f'{global_step_val}: {loss_val}')
+            print(f'{i}: {loss_val}')
 
 
 def main(args):
@@ -76,10 +80,10 @@ def main(args):
     dev_dataset = SquadReader(args.dev_path)
     converter = SquadConverter(token_to_index, PAD_TOKEN, UNK_TOKEN, lower=args.lower)
     train_generator = Iterator(train_dataset, batch_size, converter)
-    tensorflow_ops(model, train_generator)
+    dev_generator = Iterator(dev_dataset, batch_size, converter)
+    tensorflow_ops(model, train_generator, dev_generator)
     model.save_weights('./model/qanet.h5')
     return
-    dev_generator = Iterator(dev_dataset, batch_size, converter)
     trainer = SquadTrainer(model, train_generator, epochs, dev_generator,
                            './model/qanet.{epoch:02d}-{val_loss:.2f}.h5')
     # trainer.add_callback(BatchLearningRateScheduler())
